@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { usePersistedState } from '@/lib/use-persisted-state'
 import { Plus, Search, CalendarDays, Users, Home, Pencil, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -54,7 +55,7 @@ const emptyForm = (): Omit<Buchung, 'id'> => ({
 })
 
 export default function BuchungenPage() {
-  const [buchungen, setBuchungen] = useState<Buchung[]>(initialBuchungen)
+  const [buchungen, setBuchungen] = usePersistedState<Buchung[]>('stollenhof-buchungen', initialBuchungen)
   const [search, setSearch] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editId, setEditId] = useState<number | null>(null)

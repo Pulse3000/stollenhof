@@ -12,13 +12,19 @@ import {
   Leaf,
   Menu,
   X,
+  Users,
+  CalendarRange,
+  Home,
 } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
 
 const navItems = [
   { href: '/', label: 'Übersicht', icon: LayoutDashboard },
+  { href: '/kalender', label: 'Hofkalender', icon: CalendarRange },
   { href: '/buchungen', label: 'Buchungen', icon: CalendarDays },
+  { href: '/gaeste', label: 'Gästeverzeichnis', icon: Users },
+  { href: '/unterkunft', label: 'Siloturm', icon: Home },
   { href: '/tiere', label: 'Tiere', icon: Beef },
   { href: '/milch', label: 'Milchdaten', icon: Droplets },
   { href: '/veranstaltungen', label: 'Veranstaltungen', icon: PartyPopper },

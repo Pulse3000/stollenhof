@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { usePersistedState } from '@/lib/use-persisted-state'
 import { Plus, Trash2, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -120,7 +121,7 @@ function NewTaskForm({ onAdd }: { onAdd: (a: Omit<Aufgabe, 'id' | 'erledigt'>) =
 }
 
 export default function AufgabenPage() {
-  const [aufgaben, setAufgaben] = useState<Aufgabe[]>(initialAufgaben)
+  const [aufgaben, setAufgaben] = usePersistedState<Aufgabe[]>('stollenhof-aufgaben', initialAufgaben)
   const [filterKat, setFilterKat] = useState<Kategorie | 'Alle'>('Alle')
 
   function toggle(id: number) {

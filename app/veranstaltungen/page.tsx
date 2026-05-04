@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { usePersistedState } from '@/lib/use-persisted-state'
 import { Plus, Calendar, MapPin, Users, Clock, Pencil, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -51,7 +52,7 @@ const emptyForm = (): Omit<Event, 'id'> => ({
 })
 
 export default function VeranstaltungenPage() {
-  const [events, setEvents] = useState<Event[]>(initialEvents)
+  const [events, setEvents] = usePersistedState<Event[]>('stollenhof-events', initialEvents)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editId, setEditId] = useState<number | null>(null)
   const [form, setForm] = useState(emptyForm())
