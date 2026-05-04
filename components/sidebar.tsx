@@ -15,6 +15,9 @@ import {
   Users,
   CalendarRange,
   Home,
+  TrendingUp,
+  DollarSign,
+  Package,
 } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
@@ -28,6 +31,9 @@ const navItems = [
   { href: '/tiere', label: 'Tiere', icon: Beef },
   { href: '/milch', label: 'Milchdaten', icon: Droplets },
   { href: '/veranstaltungen', label: 'Veranstaltungen', icon: PartyPopper },
+  { href: '/statistiken', label: 'Statistiken', icon: TrendingUp },
+  { href: '/finanzen', label: 'Finanzen', icon: DollarSign },
+  { href: '/futter', label: 'Futter', icon: Package },
   { href: '/aufgaben', label: 'Aufgaben', icon: CheckSquare },
 ]
 
