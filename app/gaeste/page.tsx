@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { usePersistedState } from '@/lib/use-persisted-state'
+import { STORAGE_KEYS } from '@/lib/data'
 import { Plus, Search, Mail, Phone, MapPin, Pencil, Trash2, Star, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -41,7 +42,7 @@ const emptyForm = (): Omit<Gast, 'id'> => ({
 })
 
 export default function GaestePage() {
-  const [gaeste, setGaeste] = usePersistedState<Gast[]>('stollenhof-gaeste', initialGaeste)
+  const [gaeste, setGaeste] = usePersistedState<Gast[]>(STORAGE_KEYS.gaeste, initialGaeste)
   const [search, setSearch] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editId, setEditId] = useState<number | null>(null)

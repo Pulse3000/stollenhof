@@ -1,49 +1,43 @@
-# Vibe Coding Platform
+# Oberer Stollenhof – Hofverwaltung
 
-An end-to-end coding platform where users enter text prompts and an AI agent generates full-stack applications in a sandboxed environment with live preview, file explorer, and command logs.
-
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?demo-description=A+full-stack+coding+platform+built+with+Vercel%27s+AI+Cloud%2C+AI+SDK%2C+and+Next.js.&demo-image=https%3A%2F%2Fassets.vercel.com%2Fimage%2Fupload%2Fv1754588832%2FOSSvibecodingplatform%2Fscreenshot.png&demo-title=Vibe+Coding+Platform&demo-url=https%3A%2F%2Fvercel.fyi%2Fvibes&project-name=Vibe+Coding+Platform&repository-name=vibe-coding-platform&repository-url=https%3A%2F%2Fgithub.com%2Fvercel%2Fexamples%2Ftree%2Fmain%2Fapps%2Fvibe-coding-platform&from=vibe-coding-platform-app)
+Modernes Verwaltungssystem für den Demeter-Biohof Oberer Stollenhof in Rechberg (Baden-Württemberg). Verwaltet Buchungen der Siloturm-Ferienwohnung, Gäste, Tiere, Milchproduktion, Veranstaltungen, Finanzen und Aufgaben.
 
 ## Features
 
-- Multi-model support via AI Gateway (Claude, GPT, Grok)
-- Secure code execution with Vercel Sandbox
-- Real-time live preview of generated apps
-- File explorer for browsing project files
-- Command logs and error monitoring
-- One-click deploy to Vercel
+- **Hofkalender** – visuelle Monatsansicht mit Buchungen und Veranstaltungen
+- **Buchungsverwaltung** – Reservierungen für die Siloturm-Ferienwohnung mit Status-Tracking
+- **Gästeverzeichnis** – Kontaktdaten, Stammgast-Markierung und Newsletter-Verwaltung
+- **Tierverwaltung** – 35 Fleckvieh-Milchkühe mit individuellem Status, Hühner
+- **Milchdaten** – Monatliche Produktion, Qualitätswerte (Fett/Eiweiß/Zellzahl), Lieferungen an Molkerei Schrozberg
+- **Veranstaltungen** – Hofführungen, Workshops, Scheunenweihnacht
+- **Statistiken** – Jahresübersicht mit Auslastung und Produktionscharts
+- **Finanzen** – Einnahmen-/Ausgaben-Tracking und Gewinnmarge
+- **Futterverwaltung** – Lagerbestände mit Mindestbestandswarnungen
+- **Aufgaben** – Priorisierte To-do-Liste nach Kategorie
+
+Daten werden lokal im Browser gespeichert (`localStorage`) – kein Backend nötig.
 
 ## Tech Stack
 
-- [Next.js](https://nextjs.org) with Turbopack
-- [AI SDK](https://ai-sdk.dev) v6
-- [Vercel AI Gateway](https://vercel.com/docs/ai-gateway)
-- [Vercel Sandbox](https://vercel.com/docs/vercel-sandbox)
-- [Tailwind CSS](https://tailwindcss.com)
-- [shadcn/ui](https://ui.shadcn.com)
+- [Next.js 16](https://nextjs.org) (App Router, Turbopack)
+- [React 19](https://react.dev)
+- [Tailwind CSS 4](https://tailwindcss.com)
+- [shadcn/ui](https://ui.shadcn.com) Komponenten (Radix UI)
+- [Lucide Icons](https://lucide.dev)
+- TypeScript
 
-## Getting Started
-
-### Run Locally
+## Lokal starten
 
 ```bash
 pnpm install
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Anschließend [http://localhost:3000](http://localhost:3000) öffnen.
 
-## Supported Models
-
-- Claude Opus 4.6
-- Claude Sonnet 4.6
-- GPT-5.3 Codex
-- Grok 4.1 Reasoning
-
-## Deploy
-
-Click the deploy button above or run:
+## Build
 
 ```bash
-vc deploy
+pnpm build
+pnpm start
 ```
