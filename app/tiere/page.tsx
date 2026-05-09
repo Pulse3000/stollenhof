@@ -1,57 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import { Beef, Bird, AlertCircle, CheckCircle, Activity } from 'lucide-react'
+import { Beef, Bird, AlertCircle, CheckCircle, Activity, Baby, Droplets } from 'lucide-react'
+import { usePersistedState } from '@/lib/use-persisted-state'
+import { STORAGE_KEYS, initialKuehe, formatDate, daysUntil, type Kuh, type KuhStatus } from '@/lib/data'
 
-type Kuh = {
-  nr: number
-  name: string
-  alter: number
-  rasse: string
-  status: 'Gesund' | 'In Behandlung' | 'Trächtig' | 'Trockengestellt'
-  laktation: number
-  letzteUntersuchung: string
-}
-
-const kuehe: Kuh[] = [
-  { nr: 1, name: 'Alma', alter: 6, rasse: 'Fleckvieh', status: 'Gesund', laktation: 4, letzteUntersuchung: '12.04.2026' },
-  { nr: 2, name: 'Berta', alter: 4, rasse: 'Fleckvieh', status: 'Trächtig', laktation: 2, letzteUntersuchung: '01.05.2026' },
-  { nr: 3, name: 'Clara', alter: 7, rasse: 'Fleckvieh', status: 'Gesund', laktation: 5, letzteUntersuchung: '15.04.2026' },
-  { nr: 4, name: 'Dora', alter: 5, rasse: 'Fleckvieh', status: 'Gesund', laktation: 3, letzteUntersuchung: '10.04.2026' },
-  { nr: 5, name: 'Ella', alter: 3, rasse: 'Fleckvieh', status: 'Gesund', laktation: 1, letzteUntersuchung: '20.04.2026' },
-  { nr: 6, name: 'Flora', alter: 8, rasse: 'Fleckvieh', status: 'Trockengestellt', laktation: 6, letzteUntersuchung: '05.04.2026' },
-  { nr: 7, name: 'Greta', alter: 5, rasse: 'Fleckvieh', status: 'Gesund', laktation: 3, letzteUntersuchung: '18.04.2026' },
-  { nr: 8, name: 'Hanna', alter: 4, rasse: 'Fleckvieh', status: 'Gesund', laktation: 2, letzteUntersuchung: '22.04.2026' },
-  { nr: 9, name: 'Ida', alter: 6, rasse: 'Fleckvieh', status: 'Trächtig', laktation: 4, letzteUntersuchung: '02.05.2026' },
-  { nr: 10, name: 'Julia', alter: 5, rasse: 'Fleckvieh', status: 'Gesund', laktation: 3, letzteUntersuchung: '25.04.2026' },
-  { nr: 11, name: 'Klara', alter: 7, rasse: 'Fleckvieh', status: 'Gesund', laktation: 5, letzteUntersuchung: '14.04.2026' },
-  { nr: 12, name: 'Lisa', alter: 3, rasse: 'Fleckvieh', status: 'Gesund', laktation: 1, letzteUntersuchung: '28.04.2026' },
-  { nr: 13, name: 'Maria', alter: 6, rasse: 'Fleckvieh', status: 'Gesund', laktation: 4, letzteUntersuchung: '09.04.2026' },
-  { nr: 14, name: 'Nora', alter: 4, rasse: 'Fleckvieh', status: 'In Behandlung', laktation: 2, letzteUntersuchung: '03.05.2026' },
-  { nr: 15, name: 'Olga', alter: 8, rasse: 'Fleckvieh', status: 'Gesund', laktation: 6, letzteUntersuchung: '07.04.2026' },
-  { nr: 16, name: 'Paula', alter: 5, rasse: 'Fleckvieh', status: 'Gesund', laktation: 3, letzteUntersuchung: '19.04.2026' },
-  { nr: 17, name: 'Rosa', alter: 4, rasse: 'Fleckvieh', status: 'Trächtig', laktation: 2, letzteUntersuchung: '30.04.2026' },
-  { nr: 18, name: 'Sabine', alter: 6, rasse: 'Fleckvieh', status: 'Gesund', laktation: 4, letzteUntersuchung: '11.04.2026' },
-  { nr: 19, name: 'Tina', alter: 3, rasse: 'Fleckvieh', status: 'Gesund', laktation: 1, letzteUntersuchung: '24.04.2026' },
-  { nr: 20, name: 'Ursula', alter: 7, rasse: 'Fleckvieh', status: 'Gesund', laktation: 5, letzteUntersuchung: '16.04.2026' },
-  { nr: 21, name: 'Vera', alter: 5, rasse: 'Fleckvieh', status: 'Gesund', laktation: 3, letzteUntersuchung: '21.04.2026' },
-  { nr: 22, name: 'Wanda', alter: 4, rasse: 'Fleckvieh', status: 'Gesund', laktation: 2, letzteUntersuchung: '26.04.2026' },
-  { nr: 23, name: 'Xenia', alter: 6, rasse: 'Fleckvieh', status: 'Trockengestellt', laktation: 4, letzteUntersuchung: '08.04.2026' },
-  { nr: 24, name: 'Yvonne', alter: 5, rasse: 'Fleckvieh', status: 'Gesund', laktation: 3, letzteUntersuchung: '17.04.2026' },
-  { nr: 25, name: 'Zelda', alter: 3, rasse: 'Fleckvieh', status: 'Gesund', laktation: 1, letzteUntersuchung: '29.04.2026' },
-  { nr: 26, name: 'Anna', alter: 7, rasse: 'Fleckvieh', status: 'Gesund', laktation: 5, letzteUntersuchung: '13.04.2026' },
-  { nr: 27, name: 'Britta', alter: 4, rasse: 'Fleckvieh', status: 'Gesund', laktation: 2, letzteUntersuchung: '23.04.2026' },
-  { nr: 28, name: 'Claudia', alter: 6, rasse: 'Fleckvieh', status: 'Gesund', laktation: 4, letzteUntersuchung: '06.04.2026' },
-  { nr: 29, name: 'Diana', alter: 5, rasse: 'Fleckvieh', status: 'Trächtig', laktation: 3, letzteUntersuchung: '01.05.2026' },
-  { nr: 30, name: 'Eva', alter: 8, rasse: 'Fleckvieh', status: 'Gesund', laktation: 6, letzteUntersuchung: '04.04.2026' },
-  { nr: 31, name: 'Frieda', alter: 4, rasse: 'Fleckvieh', status: 'Gesund', laktation: 2, letzteUntersuchung: '27.04.2026' },
-  { nr: 32, name: 'Gerda', alter: 6, rasse: 'Fleckvieh', status: 'Gesund', laktation: 4, letzteUntersuchung: '10.04.2026' },
-  { nr: 33, name: 'Helga', alter: 3, rasse: 'Fleckvieh', status: 'Gesund', laktation: 1, letzteUntersuchung: '22.04.2026' },
-  { nr: 34, name: 'Inge', alter: 5, rasse: 'Fleckvieh', status: 'Gesund', laktation: 3, letzteUntersuchung: '18.04.2026' },
-  { nr: 35, name: 'Jana', alter: 7, rasse: 'Fleckvieh', status: 'Gesund', laktation: 5, letzteUntersuchung: '15.04.2026' },
-]
-
-const statusConfig: Record<Kuh['status'], { color: string; icon: typeof CheckCircle }> = {
+const statusConfig: Record<KuhStatus, { color: string; icon: typeof CheckCircle }> = {
   Gesund: { color: 'bg-green-100 text-green-800', icon: CheckCircle },
   Trächtig: { color: 'bg-blue-100 text-blue-800', icon: Activity },
   'In Behandlung': { color: 'bg-red-100 text-red-800', icon: AlertCircle },
@@ -59,7 +13,8 @@ const statusConfig: Record<Kuh['status'], { color: string; icon: typeof CheckCir
 }
 
 export default function TierePage() {
-  const [filter, setFilter] = useState<Kuh['status'] | 'Alle'>('Alle')
+  const [kuehe] = usePersistedState<Kuh[]>(STORAGE_KEYS.tiere, initialKuehe)
+  const [filter, setFilter] = useState<KuhStatus | 'Alle'>('Alle')
 
   const filtered = filter === 'Alle' ? kuehe : kuehe.filter((k) => k.status === filter)
 
@@ -70,16 +25,20 @@ export default function TierePage() {
     Trockengestellt: kuehe.filter((k) => k.status === 'Trockengestellt').length,
   }
 
+  const melkende = kuehe.filter((k) => k.milchTagesleistung > 0)
+  const erwartet = melkende.reduce((s, k) => s + k.milchTagesleistung, 0)
+  const durchschnitt = melkende.length > 0 ? Math.round((erwartet / melkende.length) * 10) / 10 : 0
+
   return (
     <div className="p-6 md:p-8 max-w-6xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-stone-900">Tiere</h1>
-        <p className="text-stone-500 mt-0.5 text-sm">35 Milchkühe (Fleckvieh) · 12 Hühner · Demeter-Betrieb</p>
+        <p className="text-stone-500 mt-0.5 text-sm">{kuehe.length} Milchkühe (Fleckvieh) · 12 Hühner · Demeter-Betrieb</p>
       </div>
 
       {/* Herd summary */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {(Object.entries(counts) as [Kuh['status'], number][]).map(([status, count]) => {
+        {(Object.entries(counts) as [KuhStatus, number][]).map(([status, count]) => {
           const cfg = statusConfig[status]
           return (
             <button
@@ -92,6 +51,28 @@ export default function TierePage() {
             </button>
           )
         })}
+      </div>
+
+      {/* Milchleistung Übersicht */}
+      <div className="bg-white rounded-xl border border-stone-200 p-5">
+        <div className="flex items-center gap-2 mb-3">
+          <Droplets className="w-4 h-4 text-blue-600" />
+          <h2 className="font-semibold text-stone-900 text-sm">Aktuelle Tagesleistung der Herde</h2>
+        </div>
+        <div className="grid grid-cols-3 gap-4">
+          <div>
+            <p className="text-2xl font-bold text-stone-900">{melkende.length}</p>
+            <p className="text-xs text-stone-500">Aktiv melkende Kühe</p>
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-blue-700">{erwartet} L</p>
+            <p className="text-xs text-stone-500">Erwartete Tagesleistung</p>
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-green-700">{durchschnitt} L</p>
+            <p className="text-xs text-stone-500">Ø pro Kuh und Tag</p>
+          </div>
+        </div>
       </div>
 
       {/* Cattle table */}
@@ -117,22 +98,45 @@ export default function TierePage() {
                 <th className="text-left px-4 py-3 font-semibold text-stone-600">Alter</th>
                 <th className="text-left px-4 py-3 font-semibold text-stone-600">Laktation</th>
                 <th className="text-left px-4 py-3 font-semibold text-stone-600">Status</th>
+                <th className="text-right px-4 py-3 font-semibold text-stone-600">Milch/Tag</th>
+                <th className="text-left px-4 py-3 font-semibold text-stone-600">Kalbung</th>
                 <th className="text-left px-4 py-3 font-semibold text-stone-600">Letzte Untersuchung</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-stone-50">
               {filtered.map((k) => {
                 const cfg = statusConfig[k.status]
+                const tage = k.kalbungVoraussichtlich ? daysUntil(k.kalbungVoraussichtlich) : null
                 return (
                   <tr key={k.nr} className="hover:bg-stone-50 transition-colors">
                     <td className="px-5 py-3 text-stone-400 font-mono text-xs">{String(k.nr).padStart(2, '0')}</td>
                     <td className="px-4 py-3 font-medium text-stone-900">{k.name}</td>
-                    <td className="px-4 py-3 text-stone-600">{k.alter} Jahre</td>
-                    <td className="px-4 py-3 text-stone-600">{k.laktation}. Laktation</td>
+                    <td className="px-4 py-3 text-stone-600">{k.alter} J.</td>
+                    <td className="px-4 py-3 text-stone-600">{k.laktation}.</td>
                     <td className="px-4 py-3">
                       <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${cfg.color}`}>{k.status}</span>
                     </td>
-                    <td className="px-4 py-3 text-stone-500">{k.letzteUntersuchung}</td>
+                    <td className="px-4 py-3 text-right font-medium tabular-nums">
+                      {k.milchTagesleistung > 0 ? (
+                        <span className="text-blue-700">{k.milchTagesleistung} L</span>
+                      ) : (
+                        <span className="text-stone-300">–</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-stone-600 text-xs">
+                      {k.kalbungVoraussichtlich ? (
+                        <span className="inline-flex items-center gap-1">
+                          <Baby className="w-3 h-3 text-pink-500" />
+                          {formatDate(k.kalbungVoraussichtlich)}
+                          {tage !== null && tage >= 0 && (
+                            <span className="text-stone-400">({tage} T.)</span>
+                          )}
+                        </span>
+                      ) : (
+                        <span className="text-stone-300">–</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-stone-500 text-xs">{formatDate(k.letzteUntersuchung)}</td>
                   </tr>
                 )
               })}
@@ -140,6 +144,26 @@ export default function TierePage() {
           </table>
         </div>
       </div>
+
+      {/* Notizen für Kühe mit Behandlung/Notiz */}
+      {kuehe.some((k) => k.notiz) && (
+        <div className="bg-white rounded-xl border border-stone-200 p-5">
+          <h2 className="font-semibold text-stone-900 mb-3">Anmerkungen zu einzelnen Tieren</h2>
+          <div className="space-y-2 text-sm">
+            {kuehe
+              .filter((k) => k.notiz)
+              .map((k) => (
+                <div key={k.nr} className="flex items-start gap-3 py-1.5">
+                  <span className="font-mono text-xs text-stone-400 mt-0.5 shrink-0">
+                    Nr. {String(k.nr).padStart(2, '0')}
+                  </span>
+                  <span className="font-medium text-stone-700 shrink-0">{k.name}</span>
+                  <span className="text-stone-500">{k.notiz}</span>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
 
       {/* Chickens */}
       <div className="bg-white rounded-xl border border-stone-200 p-5">
