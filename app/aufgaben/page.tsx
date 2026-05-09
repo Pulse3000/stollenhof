@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { usePersistedState } from '@/lib/use-persisted-state'
+import { STORAGE_KEYS, initialAufgaben, type Aufgabe, type Kategorie, type Prioritaet } from '@/lib/data'
 import { Plus, Trash2, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -9,32 +10,6 @@ import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
-
-type Prioritaet = 'Hoch' | 'Mittel' | 'Niedrig'
-type Kategorie = 'Stall' | 'Feld' | 'Gäste' | 'Verwaltung' | 'Wartung'
-
-type Aufgabe = {
-  id: number
-  titel: string
-  kategorie: Kategorie
-  prioritaet: Prioritaet
-  faellig: string
-  verantwortlich: string
-  erledigt: boolean
-  notiz: string
-}
-
-const initialAufgaben: Aufgabe[] = [
-  { id: 1, titel: 'Kuh Nr. 14 (Nora) – Nachkontrolle beim Tierarzt', kategorie: 'Stall', prioritaet: 'Hoch', faellig: '08.05.2026', verantwortlich: 'Hans Schabel', erledigt: false, notiz: 'Termin mit Dr. Baum um 09:00 Uhr' },
-  { id: 2, titel: 'Siloturm für Familie Müller vorbereiten', kategorie: 'Gäste', prioritaet: 'Hoch', faellig: '09.05.2026', verantwortlich: 'Maria Schabel', erledigt: false, notiz: 'Anreise 10.05. – Bettwäsche wechseln, Willkommenskorb befüllen' },
-  { id: 3, titel: 'Weide für Herde öffnen (Umtrieb)', kategorie: 'Feld', prioritaet: 'Mittel', faellig: '10.05.2026', verantwortlich: 'Hans Schabel', erledigt: false, notiz: 'Zaunpfahl auf der Nordseite prüfen' },
-  { id: 4, titel: 'Milchkühlung warten – Filter reinigen', kategorie: 'Wartung', prioritaet: 'Mittel', faellig: '12.05.2026', verantwortlich: 'Hans Schabel', erledigt: false, notiz: '' },
-  { id: 5, titel: 'Monatliche Buchhaltung April abschließen', kategorie: 'Verwaltung', prioritaet: 'Mittel', faellig: '15.05.2026', verantwortlich: 'Maria Schabel', erledigt: false, notiz: 'Milchgeldabrechnung Schrozberg noch ausstehend' },
-  { id: 6, titel: 'Hühnerstall desinfizieren', kategorie: 'Stall', prioritaet: 'Niedrig', faellig: '20.05.2026', verantwortlich: 'Johann Schabel', erledigt: false, notiz: '' },
-  { id: 7, titel: 'Demeter-Meldung Q2 vorbereiten', kategorie: 'Verwaltung', prioritaet: 'Mittel', faellig: '25.05.2026', verantwortlich: 'Maria Schabel', erledigt: false, notiz: '' },
-  { id: 8, titel: 'Traktor – Ölwechsel', kategorie: 'Wartung', prioritaet: 'Niedrig', faellig: '31.05.2026', verantwortlich: 'Hans Schabel', erledigt: true, notiz: 'Erledigt am 02.04.' },
-  { id: 9, titel: 'Schreibtisch aufräumen – Archiv Q1', kategorie: 'Verwaltung', prioritaet: 'Niedrig', faellig: '30.04.2026', verantwortlich: 'Maria Schabel', erledigt: true, notiz: '' },
-]
 
 const prioColors: Record<Prioritaet, string> = {
   Hoch: 'bg-red-100 text-red-700',
@@ -121,7 +96,7 @@ function NewTaskForm({ onAdd }: { onAdd: (a: Omit<Aufgabe, 'id' | 'erledigt'>) =
 }
 
 export default function AufgabenPage() {
-  const [aufgaben, setAufgaben] = usePersistedState<Aufgabe[]>('stollenhof-aufgaben', initialAufgaben)
+  const [aufgaben, setAufgaben] = usePersistedState<Aufgabe[]>(STORAGE_KEYS.aufgaben, initialAufgaben)
   const [filterKat, setFilterKat] = useState<Kategorie | 'Alle'>('Alle')
 
   function toggle(id: number) {

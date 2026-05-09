@@ -2,35 +2,14 @@
 
 import { useState } from 'react'
 import { usePersistedState } from '@/lib/use-persisted-state'
+import { STORAGE_KEYS, initialEvents, formatDate, isPast, type Event, type EventKategorie } from '@/lib/data'
 import { Plus, Calendar, MapPin, Users, Clock, Pencil, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
-type Event = {
-  id: number
-  titel: string
-  datum: string
-  uhrzeit: string
-  ort: string
-  maxTeilnehmer: number
-  angemeldet: number
-  beschreibung: string
-  kategorie: 'Führung' | 'Workshop' | 'Feier' | 'Besichtigung' | 'Sonstiges'
-}
-
-const initialEvents: Event[] = [
-  { id: 1, titel: 'Pizzabacken auf dem Hof', datum: '2026-05-17', uhrzeit: '14:00', ort: 'Backofen beim Stall', maxTeilnehmer: 20, angemeldet: 14, beschreibung: 'Gemeinsames Pizzabacken mit selbst gemachtem Teig im Holzofen. Für Familien und Kinder besonders geeignet.', kategorie: 'Workshop' },
-  { id: 2, titel: 'Hofführung für Schulklasse', datum: '2026-05-25', uhrzeit: '09:00', ort: 'Gesamter Hof', maxTeilnehmer: 30, angemeldet: 28, beschreibung: 'Führung durch den Demeter-Betrieb für eine 3. Klasse der Grundschule Rechberg. Schwerpunkt: Milchwirtschaft.', kategorie: 'Führung' },
-  { id: 3, titel: 'Demeter-Betriebsbesichtigung', datum: '2026-06-14', uhrzeit: '10:00', ort: 'Oberer Stollenhof', maxTeilnehmer: 15, angemeldet: 9, beschreibung: 'Besichtigung für interessierte Bio-Landwirte aus der Region. Austausch über Demeter-Richtlinien und Betriebskonzept.', kategorie: 'Besichtigung' },
-  { id: 4, titel: 'Käseworkshop', datum: '2026-06-28', uhrzeit: '11:00', ort: 'Hofküche', maxTeilnehmer: 12, angemeldet: 6, beschreibung: 'Einführung in die Käseherstellung mit frischer Rohmilch vom Hof. Jeder Teilnehmer nimmt eigenen Käse mit nach Hause.', kategorie: 'Workshop' },
-  { id: 5, titel: 'Sommerführung mit Gästen', datum: '2026-07-12', uhrzeit: '16:00', ort: 'Siloturm & Stall', maxTeilnehmer: 25, angemeldet: 12, beschreibung: 'Hofführung für aktuelle Feriengäste im Siloturm. Melken, Stallbesichtigung und Abendessen.', kategorie: 'Führung' },
-  { id: 6, titel: 'Scheunenweihnacht', datum: '2026-12-19', uhrzeit: '17:00', ort: 'Scheune am Stollenhof', maxTeilnehmer: 80, angemeldet: 55, beschreibung: 'Traditionelle Scheunenweihnacht am letzten Wochenende vor dem Weihnachtsfest. Mit Punsch, Weihnachtsmarkt und Stallführung.', kategorie: 'Feier' },
-  { id: 7, titel: 'Frühjahrsfest 2026', datum: '2026-04-26', uhrzeit: '12:00', ort: 'Hofgelände', maxTeilnehmer: 60, angemeldet: 60, beschreibung: 'Bereits stattgefunden. Gut besucht – 60 Gäste aus der Region.', kategorie: 'Feier' },
-]
-
-const kategorieColors: Record<Event['kategorie'], string> = {
+const kategorieColors: Record<EventKategorie, string> = {
   Führung: 'bg-blue-100 text-blue-800',
   Workshop: 'bg-green-100 text-green-800',
   Feier: 'bg-purple-100 text-purple-800',
@@ -38,21 +17,12 @@ const kategorieColors: Record<Event['kategorie'], string> = {
   Sonstiges: 'bg-stone-100 text-stone-600',
 }
 
-function formatDate(iso: string) {
-  const [y, m, d] = iso.split('-')
-  return `${d}.${m}.${y}`
-}
-
-function isPast(iso: string) {
-  return new Date(iso) < new Date('2026-05-04')
-}
-
 const emptyForm = (): Omit<Event, 'id'> => ({
   titel: '', datum: '', uhrzeit: '', ort: '', maxTeilnehmer: 20, angemeldet: 0, beschreibung: '', kategorie: 'Sonstiges',
 })
 
 export default function VeranstaltungenPage() {
-  const [events, setEvents] = usePersistedState<Event[]>('stollenhof-events', initialEvents)
+  const [events, setEvents] = usePersistedState<Event[]>(STORAGE_KEYS.events, initialEvents)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editId, setEditId] = useState<number | null>(null)
   const [form, setForm] = useState(emptyForm())

@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { usePersistedState } from '@/lib/use-persisted-state'
+import { STORAGE_KEYS } from '@/lib/data'
 import { Plus, Pencil, Trash2, Package, AlertTriangle, CheckCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -48,7 +49,7 @@ function getStatusLabel(aktuell: number, minimum: number) {
 }
 
 export default function FutterPage() {
-  const [futter, setFutter] = usePersistedState<FutterItem[]>('stollenhof-futter', initialFutter)
+  const [futter, setFutter] = usePersistedState<FutterItem[]>(STORAGE_KEYS.futter, initialFutter)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editId, setEditId] = useState<number | null>(null)
   const [form, setForm] = useState(emptyForm())

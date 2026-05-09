@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { usePersistedState } from '@/lib/use-persisted-state'
+import { STORAGE_KEYS, initialBuchungen, formatDate, type Buchung } from '@/lib/data'
 import { Plus, Search, CalendarDays, Users, Home, Pencil, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -9,38 +10,10 @@ import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
-type Buchung = {
-  id: number
-  gast: string
-  email: string
-  telefon: string
-  anreise: string
-  abreise: string
-  personen: number
-  unterkunft: string
-  status: 'Bestätigt' | 'Ausstehend' | 'Abgesagt'
-  notizen: string
-}
-
-const initialBuchungen: Buchung[] = [
-  { id: 1, gast: 'Familie Müller', email: 'mueller@example.de', telefon: '0711 123456', anreise: '2026-05-10', abreise: '2026-05-17', personen: 4, unterkunft: 'Siloturm', status: 'Bestätigt', notizen: 'Allergiker – kein Hundefell' },
-  { id: 2, gast: 'Herr & Frau Bauer', email: 'bauer@example.de', telefon: '0721 987654', anreise: '2026-05-18', abreise: '2026-05-22', personen: 2, unterkunft: 'Siloturm', status: 'Bestätigt', notizen: '' },
-  { id: 3, gast: 'Familie Weber', email: 'weber@example.de', telefon: '089 456789', anreise: '2026-05-24', abreise: '2026-05-31', personen: 5, unterkunft: 'Siloturm', status: 'Ausstehend', notizen: 'Frühbucherrabatt anfragen' },
-  { id: 4, gast: 'Familie Schmitt', email: 'schmitt@example.de', telefon: '0711 654321', anreise: '2026-06-02', abreise: '2026-06-09', personen: 3, unterkunft: 'Siloturm', status: 'Bestätigt', notizen: '' },
-  { id: 5, gast: 'Frau Hoffmann', email: 'hoffmann@example.de', telefon: '030 112233', anreise: '2026-06-14', abreise: '2026-06-21', personen: 2, unterkunft: 'Siloturm', status: 'Ausstehend', notizen: 'Vegetarierin' },
-  { id: 6, gast: 'Familie Fischer', email: 'fischer@example.de', telefon: '069 445566', anreise: '2026-07-05', abreise: '2026-07-12', personen: 6, unterkunft: 'Siloturm', status: 'Bestätigt', notizen: 'Kinder unter 12 Jahren: 2x' },
-  { id: 7, gast: 'Herr Koch', email: 'koch@example.de', telefon: '0721 334455', anreise: '2026-04-01', abreise: '2026-04-07', personen: 2, unterkunft: 'Siloturm', status: 'Bestätigt', notizen: '' },
-]
-
 const statusColors: Record<string, string> = {
   Bestätigt: 'bg-green-100 text-green-800',
   Ausstehend: 'bg-amber-100 text-amber-800',
   Abgesagt: 'bg-red-100 text-red-800',
-}
-
-function formatDate(iso: string) {
-  const [y, m, d] = iso.split('-')
-  return `${d}.${m}.${y}`
 }
 
 function nights(anreise: string, abreise: string) {
@@ -55,7 +28,7 @@ const emptyForm = (): Omit<Buchung, 'id'> => ({
 })
 
 export default function BuchungenPage() {
-  const [buchungen, setBuchungen] = usePersistedState<Buchung[]>('stollenhof-buchungen', initialBuchungen)
+  const [buchungen, setBuchungen] = usePersistedState<Buchung[]>(STORAGE_KEYS.buchungen, initialBuchungen)
   const [search, setSearch] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editId, setEditId] = useState<number | null>(null)
