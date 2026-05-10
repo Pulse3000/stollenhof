@@ -11,7 +11,19 @@ export function usePersistedState<T>(key: string, initial: T) {
     loaded.current = true
     try {
       const stored = localStorage.getItem(key)
-      if (stored !== null) setState(JSON.parse(stored) as T)
+      if (stored === null) return
+      const parsed = JSON.parse(stored)
+      // Shallow-merge plain objects with `initial` so newly added fields
+      // (e.g. after a schema change) get populated from defaults instead
+      // of being undefined for users with cached localStorage.
+      const isPlainObject =
+        typeof initial === 'object' &&
+        initial !== null &&
+        !Array.isArray(initial) &&
+        typeof parsed === 'object' &&
+        parsed !== null &&
+        !Array.isArray(parsed)
+      setState((isPlainObject ? { ...initial, ...parsed } : parsed) as T)
     } catch {}
   }, [key])
 
