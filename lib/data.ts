@@ -12,6 +12,8 @@ export const STORAGE_KEYS = {
   tiere: 'stollenhof-tiere',
   melkungen: 'stollenhof-melkungen',
   stallroutine: 'stollenhof-stallroutine',
+  tierarztJournal: 'stollenhof-tierarzt',
+  weiden: 'stollenhof-weiden',
 } as const
 
 // ---------- Buchungen ----------
@@ -190,8 +192,52 @@ export const initialStallroutine: Stallroutine[] = [
   { id: 11, slot: 'Abends', uhrzeit: '19:00', aufgabe: 'Hühnerstall schließen', erledigt: false },
 ]
 
+// ---------- Tierarzt-Journal ----------
+export type TierarztEintrag = {
+  id: number
+  datum: string // ISO
+  kuhNr: number
+  kuhName: string
+  diagnose: string
+  behandlung: string
+  tierarzt: string
+  folgetermin?: string // ISO
+  abgeschlossen: boolean
+}
+
+export const initialTierarztJournal: TierarztEintrag[] = [
+  { id: 1, datum: '2026-05-03', kuhNr: 14, kuhName: 'Nora', diagnose: 'Mastitis-Verdacht, erhöhte Zellzahl im Vorderviertel', behandlung: 'Antibiotikum Intramammär, Milch gesondert abmelken', tierarzt: 'Dr. Baum', folgetermin: '2026-05-10', abgeschlossen: false },
+  { id: 2, datum: '2026-04-20', kuhNr: 7, kuhName: 'Greta', diagnose: 'Lahmheit Hintergliedmaße links', behandlung: 'Klauenbad, entzündungshemmend', tierarzt: 'Dr. Baum', abgeschlossen: true },
+  { id: 3, datum: '2026-04-05', kuhNr: 6, kuhName: 'Flora', diagnose: 'Trockenstellen vorbereitet, letzte Kontrolle Eutergesundheit', behandlung: 'Trockensteller (Orbenin dry)', tierarzt: 'Dr. Baum', abgeschlossen: true },
+  { id: 4, datum: '2026-03-15', kuhNr: 2, kuhName: 'Berta', diagnose: 'Trächtigkeitsuntersuchung – positiv, ca. Woche 12', behandlung: 'Vitamingabe, Kontrolle in 6 Wochen empfohlen', tierarzt: 'Dr. Baum', folgetermin: '2026-04-26', abgeschlossen: true },
+]
+
+// ---------- Weiden ----------
+export type WeideStatus = 'In Nutzung' | 'Ruhend' | 'Gemäht' | 'Nachwuchs'
+export type WeideZustand = 'Sehr gut' | 'Gut' | 'Mäßig' | 'Schlecht'
+
+export type Weide = {
+  id: number
+  name: string
+  hektar: number
+  status: WeideStatus
+  zustand: WeideZustand
+  letzteNutzung: string // ISO date
+  herdeAnzahl: number // Anzahl Kühe wenn 'In Nutzung', sonst 0
+  bemerkung: string
+}
+
+export const initialWeiden: Weide[] = [
+  { id: 1, name: 'Stollenwiese Ost', hektar: 4.2, status: 'In Nutzung', zustand: 'Gut', letzteNutzung: '2026-05-09', herdeAnzahl: 28, bemerkung: 'Klee dominant, gutes Wachstum nach Regen' },
+  { id: 2, name: 'Eichwald-Koppel', hektar: 2.8, status: 'Ruhend', zustand: 'Sehr gut', letzteNutzung: '2026-04-22', herdeAnzahl: 0, bemerkung: 'Erholungsphase – Beweidung ab 18.05. geplant' },
+  { id: 3, name: 'Hangwiese Süd', hektar: 3.5, status: 'Nachwuchs', zustand: 'Gut', letzteNutzung: '2026-04-30', herdeAnzahl: 0, bemerkung: 'Nachwachsendes Gras, Beweidung ab 22.05.' },
+  { id: 4, name: 'Bachweide', hektar: 1.9, status: 'Gemäht', zustand: 'Gut', letzteNutzung: '2026-05-04', herdeAnzahl: 0, bemerkung: 'Erste Heumahd – ca. 40 Ballen Ertrag' },
+  { id: 5, name: 'Heuwiese Nord', hektar: 5.6, status: 'Ruhend', zustand: 'Sehr gut', letzteNutzung: '2026-04-15', herdeAnzahl: 0, bemerkung: 'Reine Heuwiese – Mahd Mitte Juni geplant' },
+  { id: 6, name: 'Trockenstehkoppel', hektar: 1.4, status: 'In Nutzung', zustand: 'Mäßig', letzteNutzung: '2026-05-08', herdeAnzahl: 3, bemerkung: 'Trockenstellgruppe (Flora, Xenia) und Aufzucht-Kalbin' },
+]
+
 // ---------- Helpers ----------
-export const TODAY_ISO = '2026-05-09'
+export const TODAY_ISO = '2026-05-10'
 
 export function formatDate(iso: string) {
   if (!iso) return ''

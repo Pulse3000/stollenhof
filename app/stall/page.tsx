@@ -14,6 +14,7 @@ import {
   Activity,
   Stethoscope,
   Plus,
+  Trees,
 } from 'lucide-react'
 import { usePersistedState } from '@/lib/use-persisted-state'
 import {
@@ -22,6 +23,7 @@ import {
   initialMelkungen,
   initialStallroutine,
   initialAufgaben,
+  initialWeiden,
   TODAY_ISO,
   formatDate,
   daysUntil,
@@ -30,6 +32,7 @@ import {
   type Stallroutine,
   type Aufgabe,
   type RoutineSlot,
+  type Weide,
 } from '@/lib/data'
 
 const slotIcon: Record<RoutineSlot, typeof Sun> = {
@@ -49,6 +52,7 @@ export default function StallPage() {
   const [melkungen, setMelkungen] = usePersistedState<Melkung[]>(STORAGE_KEYS.melkungen, initialMelkungen)
   const [routine, setRoutine] = usePersistedState<Stallroutine[]>(STORAGE_KEYS.stallroutine, initialStallroutine)
   const [aufgaben] = usePersistedState<Aufgabe[]>(STORAGE_KEYS.aufgaben, initialAufgaben)
+  const [weiden] = usePersistedState<Weide[]>(STORAGE_KEYS.weiden, initialWeiden)
 
   const today = melkungen.find((m) => m.datum === TODAY_ISO) ?? { datum: TODAY_ISO, morgens: 0, abends: 0 }
   const yesterday = melkungen.find((m) => {
@@ -74,6 +78,8 @@ export default function StallPage() {
     .sort((a, b) => a.daysUntil - b.daysUntil)
 
   const offeneStallaufgaben = aufgaben.filter((a) => !a.erledigt && (a.kategorie === 'Stall' || a.kategorie === 'Feld'))
+  const aktiveWeiden = weiden.filter((w) => w.status === 'In Nutzung')
+  const tiereAufWeide = aktiveWeiden.reduce((s, w) => s + w.herdeAnzahl, 0)
 
   const routineErledigt = routine.filter((r) => r.erledigt).length
   const routineFortschritt = Math.round((routineErledigt / routine.length) * 100)
@@ -275,6 +281,33 @@ export default function StallPage() {
                       Nr. {String(k.nr).padStart(2, '0')} · {k.name}
                     </p>
                     {k.notiz && <p className="text-xs text-red-700 mt-0.5">{k.notiz}</p>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Weide aktuell */}
+          {aktiveWeiden.length > 0 && (
+            <div className="bg-white rounded-xl border border-stone-200 p-5">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="font-semibold text-stone-900 text-sm flex items-center gap-2">
+                  <Trees className="w-4 h-4 text-green-600" /> Auf der Weide
+                </h2>
+                <Link href="/weide" className="text-xs text-green-700 hover:text-green-800 font-medium">
+                  Alle →
+                </Link>
+              </div>
+              <p className="text-xs text-stone-500 mb-2">
+                {tiereAufWeide} Tiere auf {aktiveWeiden.length} {aktiveWeiden.length === 1 ? 'Koppel' : 'Koppeln'}
+              </p>
+              <div className="space-y-1.5 text-sm">
+                {aktiveWeiden.map((w) => (
+                  <div key={w.id} className="flex items-center justify-between text-xs">
+                    <span className="text-stone-700 font-medium truncate">{w.name}</span>
+                    <span className="text-stone-400 ml-2 shrink-0">
+                      {w.herdeAnzahl} · {w.hektar} ha
+                    </span>
                   </div>
                 ))}
               </div>

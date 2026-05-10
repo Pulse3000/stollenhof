@@ -19,6 +19,7 @@ import {
   DollarSign,
   Package,
   Warehouse,
+  Trees,
 } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
@@ -33,6 +34,7 @@ const navGroups: { title: string; items: NavItem[] }[] = [
       { href: '/stall', label: 'Stallbuch', icon: Warehouse },
       { href: '/tiere', label: 'Tiere', icon: Beef },
       { href: '/milch', label: 'Milchdaten', icon: Droplets },
+      { href: '/weide', label: 'Weiden', icon: Trees },
       { href: '/futter', label: 'Futter', icon: Package },
       { href: '/aufgaben', label: 'Aufgaben', icon: CheckSquare },
     ],
