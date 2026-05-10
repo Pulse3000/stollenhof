@@ -18,23 +18,44 @@ import {
   TrendingUp,
   DollarSign,
   Package,
+  Warehouse,
+  Trees,
 } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
 
-const navItems = [
-  { href: '/', label: 'Übersicht', icon: LayoutDashboard },
-  { href: '/kalender', label: 'Hofkalender', icon: CalendarRange },
-  { href: '/buchungen', label: 'Buchungen', icon: CalendarDays },
-  { href: '/gaeste', label: 'Gästeverzeichnis', icon: Users },
-  { href: '/unterkunft', label: 'Siloturm', icon: Home },
-  { href: '/tiere', label: 'Tiere', icon: Beef },
-  { href: '/milch', label: 'Milchdaten', icon: Droplets },
-  { href: '/veranstaltungen', label: 'Veranstaltungen', icon: PartyPopper },
-  { href: '/statistiken', label: 'Statistiken', icon: TrendingUp },
-  { href: '/finanzen', label: 'Finanzen', icon: DollarSign },
-  { href: '/futter', label: 'Futter', icon: Package },
-  { href: '/aufgaben', label: 'Aufgaben', icon: CheckSquare },
+type NavItem = { href: string; label: string; icon: typeof Beef }
+
+const navGroups: { title: string; items: NavItem[] }[] = [
+  {
+    title: 'Stall',
+    items: [
+      { href: '/', label: 'Übersicht', icon: LayoutDashboard },
+      { href: '/stall', label: 'Stallbuch', icon: Warehouse },
+      { href: '/tiere', label: 'Tiere', icon: Beef },
+      { href: '/milch', label: 'Milchdaten', icon: Droplets },
+      { href: '/weide', label: 'Weiden', icon: Trees },
+      { href: '/futter', label: 'Futter', icon: Package },
+      { href: '/aufgaben', label: 'Aufgaben', icon: CheckSquare },
+    ],
+  },
+  {
+    title: 'Hofgäste',
+    items: [
+      { href: '/kalender', label: 'Hofkalender', icon: CalendarRange },
+      { href: '/buchungen', label: 'Buchungen', icon: CalendarDays },
+      { href: '/gaeste', label: 'Gästeverzeichnis', icon: Users },
+      { href: '/unterkunft', label: 'Siloturm', icon: Home },
+      { href: '/veranstaltungen', label: 'Veranstaltungen', icon: PartyPopper },
+    ],
+  },
+  {
+    title: 'Verwaltung',
+    items: [
+      { href: '/statistiken', label: 'Statistiken', icon: TrendingUp },
+      { href: '/finanzen', label: 'Finanzen', icon: DollarSign },
+    ],
+  },
 ]
 
 export function Sidebar() {
@@ -53,26 +74,33 @@ export function Sidebar() {
         </div>
       </div>
 
-      <nav className="flex-1 px-3 py-4 space-y-1">
-        {navItems.map(({ href, label, icon: Icon }) => {
-          const active = pathname === href
-          return (
-            <Link
-              key={href}
-              href={href}
-              onClick={() => setMobileOpen(false)}
-              className={cn(
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
-                active
-                  ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                  : 'text-green-200/70 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground'
-              )}
-            >
-              <Icon className="w-4 h-4 shrink-0" />
-              {label}
-            </Link>
-          )
-        })}
+      <nav className="flex-1 px-3 py-4 space-y-5 overflow-y-auto">
+        {navGroups.map((group) => (
+          <div key={group.title} className="space-y-1">
+            <p className="px-3 text-[10px] font-semibold uppercase tracking-wider text-green-400/50">
+              {group.title}
+            </p>
+            {group.items.map(({ href, label, icon: Icon }) => {
+              const active = pathname === href
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  onClick={() => setMobileOpen(false)}
+                  className={cn(
+                    'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+                    active
+                      ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                      : 'text-green-200/70 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground'
+                  )}
+                >
+                  <Icon className="w-4 h-4 shrink-0" />
+                  {label}
+                </Link>
+              )
+            })}
+          </div>
+        ))}
       </nav>
 
       <div className="px-4 py-4 border-t border-sidebar-border">
