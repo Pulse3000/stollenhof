@@ -594,15 +594,18 @@ export default function StallwachePage() {
                 </p>
               </div>
               <div className="md:col-span-2">
-                <Label>DDNS-URL (extern)</Label>
+                <Label>Externe URL (optional)</Label>
                 <Input
                   className="mt-1 font-mono text-sm"
                   value={config.cameraStreamUrlDdns}
                   onChange={(e) => setConfig({ ...config, cameraStreamUrlDdns: e.target.value })}
-                  placeholder="http://stallwache.rolleicam.net/videostream.asf?user=...&pwd=...&resolution=1280x720"
+                  placeholder="leer lassen wenn Backend im LAN läuft"
                 />
                 <p className="text-xs text-stone-400 mt-1">
-                  Externer Zugang via Rollei DDNS – nur wenn außerhalb des lokalen Netzes.
+                  Nur ausfüllen wenn das Python-Backend nicht im selben Netzwerk wie die Kamera läuft –
+                  z.B. via VPN (Tailscale/WireGuard) oder Port-Forwarding über eine eigene DDNS
+                  (duckdns.org, no-ip.com). Die Rollei-Cloud (rolleicam.net / megracloud.net) eignet
+                  sich nicht – sie ist ein Auth-Relay nur für den Browser-Viewer.
                 </p>
               </div>
             </div>
@@ -824,6 +827,21 @@ export default function StallwachePage() {
                 </p>
               </div>
             </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-stone-200 p-6">
+            <h2 className="font-semibold text-stone-900 mb-3">Wo läuft das Backend?</h2>
+            <p className="text-sm text-stone-600 mb-3">
+              Die Rollei SafetyCam HD 20 liefert ihren Stream nur lokal auf <code className="font-mono text-xs bg-stone-100 px-1 rounded">192.168.178.108</code>.
+              Die Rollei-Cloud (<code className="font-mono text-xs bg-stone-100 px-1 rounded">rolleicam.net</code> /
+              <code className="font-mono text-xs bg-stone-100 px-1 rounded">megracloud.net</code>) funktioniert nur im Browser
+              und kann nicht als Stream-Quelle für OpenCV/ffmpeg verwendet werden.
+            </p>
+            <ul className="text-sm text-stone-600 space-y-2 list-disc pl-5">
+              <li><strong>Empfohlen:</strong> Mini-PC oder Raspberry Pi direkt am Hof, im selben Netzwerk wie die Kamera. Nutzt die LAN-Stream-URL.</li>
+              <li><strong>Backend extern + VPN:</strong> Tailscale oder WireGuard auf dem Backend-Host – die Kamera ist dann erreichbar als wäre sie lokal.</li>
+              <li><strong>Port-Forwarding:</strong> Router → Port 80 weiterleiten zu <code className="font-mono text-xs bg-stone-100 px-1 rounded">192.168.178.108</code> und eine eigene DDNS (duckdns.org/no-ip) verwenden. <em>Achtung: Kennwort über HTTP exponiert.</em></li>
+            </ul>
           </div>
 
           <div className="bg-white rounded-xl border border-stone-200 p-6">
