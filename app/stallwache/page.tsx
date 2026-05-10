@@ -168,7 +168,7 @@ export default function StallwachePage() {
             Stallwache
           </h1>
           <p className="text-stone-500 mt-0.5 text-sm">
-            KI-Kalbungswache · YOLOv8 + RTSP-Kamera + Telegram-Alerts
+            KI-Kalbungswache · YOLOv8 + HTTP-Stream + Telegram-Alerts
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -358,8 +358,10 @@ export default function StallwachePage() {
                   </div>
                   <div className="text-center">
                     <Camera className="w-12 h-12 mx-auto mb-2 opacity-40" />
-                    <p className="text-sm opacity-70">RTSP-Stream</p>
-                    <p className="text-xs opacity-50 font-mono mt-1">{config.cameraRtspUrl}</p>
+                    <p className="text-sm opacity-70">HTTP-Stream</p>
+                    <p className="text-xs opacity-50 font-mono mt-1 break-all px-4">
+                      {config.cameraStreamUrl.replace(/user=[^&]+&pwd=[^&]+/, 'user=****&pwd=****')}
+                    </p>
                     <p className="text-xs opacity-50 mt-3">
                       (Bild-Stream verfügbar wenn Python-Backend per HTTP-Bridge angebunden ist)
                     </p>
@@ -546,7 +548,7 @@ export default function StallwachePage() {
           {/* Kamera */}
           <div className="bg-white rounded-xl border border-stone-200 p-6">
             <h2 className="font-semibold text-stone-900 mb-4 flex items-center gap-2">
-              <Camera className="w-4 h-4 text-stone-500" /> Kamera (RTSP)
+              <Camera className="w-4 h-4 text-stone-500" /> Kamera (HTTP-Stream)
             </h2>
             <div className="grid md:grid-cols-2 gap-4">
               <div>
@@ -558,23 +560,49 @@ export default function StallwachePage() {
                 />
               </div>
               <div>
-                <Label>Benutzername</Label>
+                <Label>Kamera-Passwort</Label>
                 <Input
-                  className="mt-1"
+                  type="password"
+                  className="mt-1 font-mono text-sm"
                   value={config.cameraUser}
                   onChange={(e) => setConfig({ ...config, cameraUser: e.target.value })}
+                  placeholder="Stallwache123!"
                 />
               </div>
               <div className="md:col-span-2">
-                <Label>RTSP-URL</Label>
+                <Label>Stream-URL (primär · ASF lokal)</Label>
                 <Input
                   className="mt-1 font-mono text-sm"
-                  value={config.cameraRtspUrl}
-                  onChange={(e) => setConfig({ ...config, cameraRtspUrl: e.target.value })}
-                  placeholder="rtsp://192.168.x.x:554/stream"
+                  value={config.cameraStreamUrl}
+                  onChange={(e) => setConfig({ ...config, cameraStreamUrl: e.target.value })}
+                  placeholder="http://192.168.178.108/videostream.asf?user=...&pwd=...&resolution=1280x720"
                 />
                 <p className="text-xs text-stone-400 mt-1">
-                  Geprüft mit Rollei Safetycam HD 20. Anderes RTSP-fähiges Modell sollte ebenfalls funktionieren.
+                  Rollei SafetyCam HD 20 · HTTP ASF-Stream (kein RTSP). Lokal bevorzugt.
+                </p>
+              </div>
+              <div className="md:col-span-2">
+                <Label>MJPEG-URL (Fallback · CGI)</Label>
+                <Input
+                  className="mt-1 font-mono text-sm"
+                  value={config.cameraStreamUrlMjpeg}
+                  onChange={(e) => setConfig({ ...config, cameraStreamUrlMjpeg: e.target.value })}
+                  placeholder="http://192.168.178.108/videostream.cgi?user=...&pwd=...&resolution=8"
+                />
+                <p className="text-xs text-stone-400 mt-1">
+                  Wird verwendet wenn der ASF-Stream nicht erreichbar ist.
+                </p>
+              </div>
+              <div className="md:col-span-2">
+                <Label>DDNS-URL (extern)</Label>
+                <Input
+                  className="mt-1 font-mono text-sm"
+                  value={config.cameraStreamUrlDdns}
+                  onChange={(e) => setConfig({ ...config, cameraStreamUrlDdns: e.target.value })}
+                  placeholder="http://stallwache.rollei-cloud.com/videostream.asf?user=...&pwd=...&resolution=1280x720"
+                />
+                <p className="text-xs text-stone-400 mt-1">
+                  Externer Zugang via Rollei DDNS – nur wenn außerhalb des lokalen Netzes.
                 </p>
               </div>
             </div>
@@ -750,7 +778,7 @@ export default function StallwachePage() {
             </h2>
             <p className="text-sm text-stone-600">
               Das Backend läuft typischerweise auf einem Raspberry Pi 4/5, einem Mini-PC oder direkt
-              am Hof-Server. Es liest den RTSP-Stream der Kamera, führt die YOLOv8-Inferenz aus und
+              am Hof-Server. Es liest den HTTP-Stream der Rollei SafetyCam HD 20, führt die YOLOv8n-Inferenz aus und
               schickt bei Kalbungs-Verdacht Telegram-Alerts.
             </p>
 
@@ -767,7 +795,7 @@ export default function StallwachePage() {
                 <p className="font-semibold text-stone-900 mb-2">2. Konfiguration kopieren</p>
                 <pre className="bg-stone-900 text-stone-100 rounded p-3 overflow-x-auto text-xs font-mono">
                   cp .env.example .env{'\n'}
-                  # CAMERA_RTSP_URL, TELEGRAM_BOT_TOKEN und{'\n'}
+                  # CAMERA_STREAM_URL, TELEGRAM_BOT_TOKEN und{'\n'}
                   # TELEGRAM_CHAT_ID anpassen
                 </pre>
               </div>
@@ -803,7 +831,7 @@ export default function StallwachePage() {
             <ul className="text-sm text-stone-600 space-y-1.5 list-disc pl-5">
               <li>Raspberry Pi 4 / 5 (mind. 4 GB RAM) oder Mini-PC mit x86/ARM</li>
               <li>Optional: NVIDIA-GPU für höhere FPS (CUDA aktivieren in Konfiguration)</li>
-              <li>RTSP-fähige IP-Kamera mit Nachtsicht (z.B. Rollei Safetycam HD 20)</li>
+              <li>Rollei SafetyCam HD 20 (HTTP ASF/CGI-Stream) oder andere IP-Kamera mit HTTP-Stream</li>
               <li>Stabile Netzwerkverbindung im Stall (LAN bevorzugt, sonst WLAN mit gutem Signal)</li>
               <li>Telegram-Bot via @BotFather erstellt, eigene Chat-ID via @userinfobot</li>
             </ul>
