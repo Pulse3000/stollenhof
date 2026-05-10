@@ -599,7 +599,7 @@ export default function StallwachePage() {
                   className="mt-1 font-mono text-sm"
                   value={config.cameraStreamUrlDdns}
                   onChange={(e) => setConfig({ ...config, cameraStreamUrlDdns: e.target.value })}
-                  placeholder="http://stallwache.rollei-cloud.com/videostream.asf?user=...&pwd=...&resolution=1280x720"
+                  placeholder="http://stallwache.rolleicam.net/videostream.asf?user=...&pwd=...&resolution=1280x720"
                 />
                 <p className="text-xs text-stone-400 mt-1">
                   Externer Zugang via Rollei DDNS – nur wenn außerhalb des lokalen Netzes.

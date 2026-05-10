@@ -271,7 +271,7 @@ export const defaultStallwacheConfig: StallwacheConfig = {
   cameraName: 'Abkalbestall Süd',
   cameraStreamUrl: 'http://192.168.178.108/videostream.asf?user=Stallwache123!&pwd=Stallwache123!&resolution=1280x720',
   cameraStreamUrlMjpeg: 'http://192.168.178.108/videostream.cgi?user=Stallwache123!&pwd=Stallwache123!&resolution=8',
-  cameraStreamUrlDdns: 'http://stallwache.rollei-cloud.com/videostream.asf?user=Stallwache123!&pwd=Stallwache123!&resolution=1280x720',
+  cameraStreamUrlDdns: 'http://stallwache.rolleicam.net/videostream.asf?user=Stallwache123!&pwd=Stallwache123!&resolution=1280x720',
   cameraUser: 'Stallwache123!',
   modelPath: './models/yolov8n.pt',
   confidenceThreshold: 0.3,
