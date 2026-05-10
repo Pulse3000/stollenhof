@@ -14,6 +14,9 @@ export const STORAGE_KEYS = {
   stallroutine: 'stollenhof-stallroutine',
   tierarztJournal: 'stollenhof-tierarzt',
   weiden: 'stollenhof-weiden',
+  stallwacheConfig: 'stollenhof-stallwache-config',
+  stallwacheEvents: 'stollenhof-stallwache-events',
+  stallwacheStatus: 'stollenhof-stallwache-status',
 } as const
 
 // ---------- Buchungen ----------
@@ -236,6 +239,100 @@ export const initialWeiden: Weide[] = [
   { id: 6, name: 'Trockenstehkoppel', hektar: 1.4, status: 'In Nutzung', zustand: 'Mäßig', letzteNutzung: '2026-05-08', herdeAnzahl: 3, bemerkung: 'Trockenstellgruppe (Flora, Xenia) und Aufzucht-Kalbin' },
 ]
 
+// ---------- Stallwache (KI-Kalbungswache) ----------
+// Web-Dashboard für das stallwache-skill Python-Backend
+// (YOLOv8 + RTSP-Kamera + Telegram-Alerts)
+// https://github.com/Pulse3000/stallwache-skill
+
+export type StallwacheConfig = {
+  enabled: boolean
+  apiUrl: string // z.B. http://192.168.178.50:8080
+  cameraName: string
+  cameraRtspUrl: string
+  cameraUser: string
+  modelPath: string
+  confidenceThreshold: number // 0..1
+  iouThreshold: number // 0..1
+  device: 'cpu' | 'cuda' | 'mps'
+  telegramEnabled: boolean
+  telegramBotToken: string
+  telegramChatId: string
+  telegramSendImage: boolean
+  alertCooldownSeconds: number
+  retentionDays: number
+}
+
+export const defaultStallwacheConfig: StallwacheConfig = {
+  enabled: false,
+  apiUrl: 'http://192.168.178.50:8080',
+  cameraName: 'Abkalbestall Süd',
+  cameraRtspUrl: 'rtsp://192.168.178.108:554/stream',
+  cameraUser: 'stallwache',
+  modelPath: './models/yolov8m.pt',
+  confidenceThreshold: 0.65,
+  iouThreshold: 0.45,
+  device: 'cpu',
+  telegramEnabled: true,
+  telegramBotToken: '',
+  telegramChatId: '',
+  telegramSendImage: true,
+  alertCooldownSeconds: 60,
+  retentionDays: 30,
+}
+
+export type StallwacheEventTyp =
+  | 'Kalbung erkannt'
+  | 'Aktivität'
+  | 'System gestartet'
+  | 'System gestoppt'
+  | 'Telegram-Alert'
+  | 'Fehler'
+
+export type StallwacheEvent = {
+  id: number
+  zeitstempel: string // ISO datetime, z.B. 2026-05-10T03:42:18
+  typ: StallwacheEventTyp
+  konfidenz?: number // 0..1, nur bei Detections
+  beschreibung: string
+  kuhNr?: number // optional verknüpft mit Kuh
+  bestaetigt: boolean
+}
+
+export const initialStallwacheEvents: StallwacheEvent[] = [
+  { id: 1, zeitstempel: '2026-05-10T04:18:42', typ: 'Aktivität', konfidenz: 0.71, beschreibung: 'Erhöhte Bewegung in Abkalbebox – Kuh ist unruhig', kuhNr: 2, bestaetigt: false },
+  { id: 2, zeitstempel: '2026-05-09T22:14:08', typ: 'Telegram-Alert', beschreibung: 'Alarm an Hans Schabel gesendet (Bewegungsmuster verdächtig)', kuhNr: 2, bestaetigt: true },
+  { id: 3, zeitstempel: '2026-05-09T22:13:51', typ: 'Aktivität', konfidenz: 0.68, beschreibung: 'Wiederkehrende Bewegung Box 2, mehrere Aufstehphasen', kuhNr: 2, bestaetigt: true },
+  { id: 4, zeitstempel: '2026-05-09T06:02:00', typ: 'System gestartet', beschreibung: 'Stream verbunden, YOLOv8m geladen (Device: CPU)', bestaetigt: true },
+  { id: 5, zeitstempel: '2026-04-26T03:47:12', typ: 'Kalbung erkannt', konfidenz: 0.92, beschreibung: 'Kalbung erfolgreich erkannt – Kalb sichtbar auf Frame', kuhNr: 26, bestaetigt: true },
+  { id: 6, zeitstempel: '2026-04-26T03:47:14', typ: 'Telegram-Alert', beschreibung: 'Alarm gesendet (Anna · 03:47 Uhr · 92 % Konfidenz)', kuhNr: 26, bestaetigt: true },
+  { id: 7, zeitstempel: '2026-04-08T01:22:55', typ: 'Kalbung erkannt', konfidenz: 0.88, beschreibung: 'Kalbung erkannt – nachts in Box 1', kuhNr: 11, bestaetigt: true },
+  { id: 8, zeitstempel: '2026-03-22T05:11:33', typ: 'Fehler', beschreibung: 'Stream-Verbindung verloren, automatischer Reconnect nach 12 s', bestaetigt: true },
+]
+
+export type StallwacheStatus = {
+  online: boolean
+  letzterHeartbeat: string // ISO datetime
+  fps: number
+  framesGesamt: number
+  detektionenGesamt: number
+  kalbungenGesamt: number
+  alertsGesendet: number
+  fehler: number
+  uptimeSekunden: number
+}
+
+export const defaultStallwacheStatus: StallwacheStatus = {
+  online: true,
+  letzterHeartbeat: '2026-05-10T08:24:11',
+  fps: 14.7,
+  framesGesamt: 4_287_902,
+  detektionenGesamt: 18_446,
+  kalbungenGesamt: 12,
+  alertsGesendet: 14,
+  fehler: 3,
+  uptimeSekunden: 612_440, // ~7 Tage
+}
+
 // ---------- Helpers ----------
 export const TODAY_ISO = '2026-05-10'
 
@@ -253,4 +350,37 @@ export function daysUntil(iso: string, refIso: string = TODAY_ISO): number {
   const a = new Date(iso + 'T00:00:00')
   const b = new Date(refIso + 'T00:00:00')
   return Math.round((a.getTime() - b.getTime()) / (1000 * 60 * 60 * 24))
+}
+
+export function formatDateTime(iso: string) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return iso
+  return d.toLocaleString('de-DE', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+export function formatUptime(seconds: number) {
+  const d = Math.floor(seconds / 86400)
+  const h = Math.floor((seconds % 86400) / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  if (d > 0) return `${d}T ${h}h ${m}min`
+  if (h > 0) return `${h}h ${m}min`
+  return `${m}min`
+}
+
+export function relativeTime(iso: string, nowIso: string = `${TODAY_ISO}T12:00:00`) {
+  const a = new Date(iso).getTime()
+  const b = new Date(nowIso).getTime()
+  if (isNaN(a) || isNaN(b)) return ''
+  const diffSec = Math.round((b - a) / 1000)
+  if (diffSec < 60) return 'gerade eben'
+  if (diffSec < 3600) return `vor ${Math.floor(diffSec / 60)} min`
+  if (diffSec < 86400) return `vor ${Math.floor(diffSec / 3600)} h`
+  return `vor ${Math.floor(diffSec / 86400)} T.`
 }

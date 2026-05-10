@@ -15,6 +15,9 @@ import {
   Stethoscope,
   Plus,
   Trees,
+  Eye,
+  Wifi,
+  WifiOff,
 } from 'lucide-react'
 import { usePersistedState } from '@/lib/use-persisted-state'
 import {
@@ -24,15 +27,22 @@ import {
   initialStallroutine,
   initialAufgaben,
   initialWeiden,
+  initialStallwacheEvents,
+  defaultStallwacheConfig,
+  defaultStallwacheStatus,
   TODAY_ISO,
   formatDate,
   daysUntil,
+  relativeTime,
   type Kuh,
   type Melkung,
   type Stallroutine,
   type Aufgabe,
   type RoutineSlot,
   type Weide,
+  type StallwacheEvent,
+  type StallwacheConfig,
+  type StallwacheStatus,
 } from '@/lib/data'
 
 const slotIcon: Record<RoutineSlot, typeof Sun> = {
@@ -53,6 +63,18 @@ export default function StallPage() {
   const [routine, setRoutine] = usePersistedState<Stallroutine[]>(STORAGE_KEYS.stallroutine, initialStallroutine)
   const [aufgaben] = usePersistedState<Aufgabe[]>(STORAGE_KEYS.aufgaben, initialAufgaben)
   const [weiden] = usePersistedState<Weide[]>(STORAGE_KEYS.weiden, initialWeiden)
+  const [stallwacheConfig] = usePersistedState<StallwacheConfig>(
+    STORAGE_KEYS.stallwacheConfig,
+    defaultStallwacheConfig,
+  )
+  const [stallwacheStatus] = usePersistedState<StallwacheStatus>(
+    STORAGE_KEYS.stallwacheStatus,
+    defaultStallwacheStatus,
+  )
+  const [stallwacheEvents] = usePersistedState<StallwacheEvent[]>(
+    STORAGE_KEYS.stallwacheEvents,
+    initialStallwacheEvents,
+  )
 
   const today = melkungen.find((m) => m.datum === TODAY_ISO) ?? { datum: TODAY_ISO, morgens: 0, abends: 0 }
   const yesterday = melkungen.find((m) => {
@@ -80,6 +102,11 @@ export default function StallPage() {
   const offeneStallaufgaben = aufgaben.filter((a) => !a.erledigt && (a.kategorie === 'Stall' || a.kategorie === 'Feld'))
   const aktiveWeiden = weiden.filter((w) => w.status === 'In Nutzung')
   const tiereAufWeide = aktiveWeiden.reduce((s, w) => s + w.herdeAnzahl, 0)
+  const stallwacheLetzte = [...stallwacheEvents]
+    .sort((a, b) => b.zeitstempel.localeCompare(a.zeitstempel))
+    .find((e) => e.typ === 'Kalbung erkannt' || e.typ === 'Aktivität')
+  const stallwacheUnbestaetigt = stallwacheEvents.filter((e) => !e.bestaetigt).length
+  const stallwacheOnline = stallwacheConfig.enabled && stallwacheStatus.online
 
   const routineErledigt = routine.filter((r) => r.erledigt).length
   const routineFortschritt = Math.round((routineErledigt / routine.length) * 100)
@@ -286,6 +313,50 @@ export default function StallPage() {
               </div>
             </div>
           )}
+
+          {/* Stallwache */}
+          <Link
+            href="/stallwache"
+            className={`block rounded-xl border p-5 hover:shadow-md transition-all ${
+              stallwacheOnline
+                ? 'bg-green-700 border-green-700 text-white'
+                : 'bg-stone-100 border-stone-200 text-stone-700'
+            }`}
+          >
+            <div className="flex items-center gap-2 mb-2">
+              <Eye className="w-4 h-4" />
+              <h2 className="font-semibold text-sm flex-1">Stallwache</h2>
+              {stallwacheOnline ? (
+                <span className="inline-flex items-center gap-1 text-[10px] bg-green-500 px-1.5 py-0.5 rounded-full font-semibold">
+                  <Wifi className="w-2.5 h-2.5" /> LIVE
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-[10px] bg-stone-300 text-stone-700 px-1.5 py-0.5 rounded-full font-semibold">
+                  <WifiOff className="w-2.5 h-2.5" /> OFFLINE
+                </span>
+              )}
+            </div>
+            {stallwacheOnline ? (
+              <>
+                <p className={`text-xs ${stallwacheOnline ? 'text-green-100' : 'text-stone-500'} mb-2`}>
+                  {stallwacheConfig.cameraName} · {stallwacheStatus.fps.toFixed(1)} FPS
+                </p>
+                {stallwacheLetzte && (
+                  <p className={`text-xs ${stallwacheOnline ? 'text-green-200' : 'text-stone-500'} truncate`}>
+                    Letzt. Erkennung: {relativeTime(stallwacheLetzte.zeitstempel)}
+                  </p>
+                )}
+                {stallwacheUnbestaetigt > 0 && (
+                  <p className="text-xs mt-2 inline-flex items-center gap-1 bg-white/20 px-2 py-0.5 rounded-full">
+                    <AlertTriangle className="w-3 h-3" />
+                    {stallwacheUnbestaetigt} unbestätigt
+                  </p>
+                )}
+              </>
+            ) : (
+              <p className="text-xs text-stone-500">KI-Kalbungswache deaktiviert</p>
+            )}
+          </Link>
 
           {/* Weide aktuell */}
           {aktiveWeiden.length > 0 && (
