@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import {
   Camera,
@@ -22,6 +22,8 @@ import {
   Power,
   Github,
   RefreshCw,
+  Maximize2,
+  ExternalLink,
 } from 'lucide-react'
 import { usePersistedState } from '@/lib/use-persisted-state'
 import {
@@ -86,6 +88,41 @@ export default function StallwachePage() {
   const [form, setForm] = useState<Omit<StallwacheEvent, 'id'>>(emptyEvent())
   const [streamError, setStreamError] = useState(false)
   const [streamKey, setStreamKey] = useState(0)
+  const [reconnectAttempt, setReconnectAttempt] = useState(0)
+  const previewRef = useRef<HTMLDivElement>(null)
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Auto-reconnect mit Exponential Backoff: 2s, 4s, 8s, 16s, 32s, dann aufgeben
+  useEffect(() => {
+    if (!streamError || !config.enabled || !config.cameraStreamUrlMjpeg) return
+    if (reconnectAttempt >= 5) return
+    const delayMs = 2000 * Math.pow(2, reconnectAttempt)
+    reconnectTimerRef.current = setTimeout(() => {
+      setStreamError(false)
+      setStreamKey((k) => k + 1)
+      setReconnectAttempt((n) => n + 1)
+    }, delayMs)
+    return () => {
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
+    }
+  }, [streamError, reconnectAttempt, config.enabled, config.cameraStreamUrlMjpeg])
+
+  function manualReconnect() {
+    if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
+    setStreamError(false)
+    setReconnectAttempt(0)
+    setStreamKey((k) => k + 1)
+  }
+
+  function toggleFullscreen() {
+    const el = previewRef.current
+    if (!el) return
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {})
+    } else {
+      el.requestFullscreen().catch(() => {})
+    }
+  }
 
   const sortedEvents = [...events].sort((a, b) => b.zeitstempel.localeCompare(a.zeitstempel))
   const todayEvents = events.filter((e) => e.zeitstempel.slice(0, 10) === TODAY_ISO)
@@ -146,8 +183,10 @@ export default function StallwachePage() {
   }
 
   function toggleSystem() {
+    if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
     setStreamError(false)
     setStreamKey((k) => k + 1)
+    setReconnectAttempt(0)
     setConfig({ ...config, enabled: !config.enabled })
     const newId = Math.max(0, ...events.map((e) => e.id)) + 1
     const event: StallwacheEvent = {
@@ -348,20 +387,38 @@ export default function StallwachePage() {
                 <Camera className="w-4 h-4 text-stone-500" />
                 <h2 className="font-semibold text-stone-900">Kamera-Vorschau</h2>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-stone-400">{config.cameraName}</span>
-                {config.enabled && (
-                  <button
-                    onClick={() => { setStreamError(false); setStreamKey((k) => k + 1) }}
-                    className="p-1 rounded hover:bg-stone-100 text-stone-400 hover:text-stone-600 transition-colors"
-                    title="Stream neu verbinden"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                  </button>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-stone-400 mr-1">{config.cameraName}</span>
+                {config.enabled && config.cameraStreamUrlMjpeg && (
+                  <>
+                    <button
+                      onClick={manualReconnect}
+                      className="p-1.5 rounded hover:bg-stone-100 text-stone-400 hover:text-stone-700 transition-colors"
+                      title="Stream neu verbinden"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={toggleFullscreen}
+                      className="p-1.5 rounded hover:bg-stone-100 text-stone-400 hover:text-stone-700 transition-colors"
+                      title="Vollbild"
+                    >
+                      <Maximize2 className="w-3.5 h-3.5" />
+                    </button>
+                    <a
+                      href={config.cameraStreamUrlMjpeg}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-1.5 rounded hover:bg-stone-100 text-stone-400 hover:text-stone-700 transition-colors"
+                      title="In neuem Tab öffnen"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  </>
                 )}
               </div>
             </div>
-            <div className="aspect-video bg-stone-950 relative flex items-center justify-center text-stone-400">
+            <div ref={previewRef} className="aspect-video bg-stone-950 relative flex items-center justify-center text-stone-400">
               {config.enabled ? (
                 <>
                   <div className="absolute top-3 left-3 flex items-center gap-2 bg-red-600/90 text-white px-2 py-1 rounded text-xs font-semibold z-10">
@@ -381,6 +438,7 @@ export default function StallwachePage() {
                         alt={config.cameraName}
                         className="absolute inset-0 w-full h-full object-contain"
                         onError={() => setStreamError(true)}
+                        onLoad={() => setReconnectAttempt(0)}
                       />
                       <div className="absolute bottom-3 left-3 bg-black/50 text-white text-[10px] px-2 py-1 rounded font-mono z-10">
                         MJPEG · Direkt-Stream
@@ -395,14 +453,21 @@ export default function StallwachePage() {
                           <p className="text-xs opacity-50 font-mono mt-1 break-all">
                             {config.cameraStreamUrlMjpeg.replace(/user=[^&]+&pwd=[^&]+/, 'user=****&pwd=****')}
                           </p>
-                          <p className="text-xs opacity-40 mt-2">
-                            Kamera eingeschaltet? Netzwerk erreichbar? Seite muss über HTTP laufen (kein HTTPS → Mixed Content).
-                          </p>
+                          {reconnectAttempt < 5 ? (
+                            <p className="text-xs text-amber-400 mt-2 flex items-center justify-center gap-1.5">
+                              <RefreshCw className="w-3 h-3 animate-spin" />
+                              Erneuter Versuch ({reconnectAttempt + 1}/5) …
+                            </p>
+                          ) : (
+                            <p className="text-xs opacity-40 mt-2">
+                              Kamera eingeschaltet? Netzwerk erreichbar? Seite muss über HTTP laufen (kein HTTPS → Mixed Content).
+                            </p>
+                          )}
                           <button
-                            onClick={() => { setStreamError(false); setStreamKey((k) => k + 1) }}
+                            onClick={manualReconnect}
                             className="mt-3 text-xs text-white/70 hover:text-white border border-white/20 hover:border-white/40 px-3 py-1.5 rounded transition-colors"
                           >
-                            Erneut verbinden
+                            Jetzt neu verbinden
                           </button>
                         </>
                       ) : (
