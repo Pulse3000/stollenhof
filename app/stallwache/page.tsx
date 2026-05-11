@@ -84,6 +84,8 @@ export default function StallwachePage() {
   const [eventOpen, setEventOpen] = useState(false)
   const [editId, setEditId] = useState<number | null>(null)
   const [form, setForm] = useState<Omit<StallwacheEvent, 'id'>>(emptyEvent())
+  const [streamError, setStreamError] = useState(false)
+  const [streamKey, setStreamKey] = useState(0)
 
   const sortedEvents = [...events].sort((a, b) => b.zeitstempel.localeCompare(a.zeitstempel))
   const todayEvents = events.filter((e) => e.zeitstempel.slice(0, 10) === TODAY_ISO)
@@ -144,6 +146,8 @@ export default function StallwachePage() {
   }
 
   function toggleSystem() {
+    setStreamError(false)
+    setStreamKey((k) => k + 1)
     setConfig({ ...config, enabled: !config.enabled })
     const newId = Math.max(0, ...events.map((e) => e.id)) + 1
     const event: StallwacheEvent = {
@@ -344,36 +348,74 @@ export default function StallwachePage() {
                 <Camera className="w-4 h-4 text-stone-500" />
                 <h2 className="font-semibold text-stone-900">Kamera-Vorschau</h2>
               </div>
-              <span className="text-xs text-stone-400">{config.cameraName}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-stone-400">{config.cameraName}</span>
+                {config.enabled && (
+                  <button
+                    onClick={() => { setStreamError(false); setStreamKey((k) => k + 1) }}
+                    className="p-1 rounded hover:bg-stone-100 text-stone-400 hover:text-stone-600 transition-colors"
+                    title="Stream neu verbinden"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
             </div>
             <div className="aspect-video bg-stone-950 relative flex items-center justify-center text-stone-400">
               {config.enabled ? (
                 <>
-                  <div className="absolute top-3 left-3 flex items-center gap-2 bg-red-600/90 text-white px-2 py-1 rounded text-xs font-semibold">
+                  <div className="absolute top-3 left-3 flex items-center gap-2 bg-red-600/90 text-white px-2 py-1 rounded text-xs font-semibold z-10">
                     <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
                     LIVE
                   </div>
-                  <div className="absolute top-3 right-3 bg-black/60 text-white px-2 py-1 rounded text-xs font-mono">
+                  <div className="absolute top-3 right-3 bg-black/60 text-white px-2 py-1 rounded text-xs font-mono z-10">
                     {status.fps.toFixed(1)} FPS · 1280×720
                   </div>
-                  <div className="text-center">
-                    <Camera className="w-12 h-12 mx-auto mb-2 opacity-40" />
-                    <p className="text-sm opacity-70">HTTP-Stream</p>
-                    <p className="text-xs opacity-50 font-mono mt-1 break-all px-4">
-                      {config.cameraStreamUrl.replace(/user=[^&]+&pwd=[^&]+/, 'user=****&pwd=****')}
-                    </p>
-                    <p className="text-xs opacity-50 mt-3">
-                      (Bild-Stream verfügbar wenn Python-Backend per HTTP-Bridge angebunden ist)
-                    </p>
-                  </div>
-                  {/* Demo-Detection-Box */}
-                  <div className="absolute inset-0 pointer-events-none">
-                    <div className="absolute top-[35%] left-[40%] w-[25%] h-[35%] border-2 border-green-400 rounded">
-                      <div className="absolute -top-6 left-0 bg-green-500 text-white text-[10px] px-1.5 py-0.5 rounded font-mono">
-                        cow · 0.91
+
+                  {config.cameraStreamUrlMjpeg && !streamError ? (
+                    <>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        key={streamKey}
+                        src={config.cameraStreamUrlMjpeg}
+                        alt={config.cameraName}
+                        className="absolute inset-0 w-full h-full object-contain"
+                        onError={() => setStreamError(true)}
+                      />
+                      <div className="absolute bottom-3 left-3 bg-black/50 text-white text-[10px] px-2 py-1 rounded font-mono z-10">
+                        MJPEG · Direkt-Stream
                       </div>
+                    </>
+                  ) : (
+                    <div className="text-center px-6">
+                      {streamError ? (
+                        <>
+                          <Camera className="w-12 h-12 mx-auto mb-2 text-red-400 opacity-80" />
+                          <p className="text-sm text-red-400">Stream nicht erreichbar</p>
+                          <p className="text-xs opacity-50 font-mono mt-1 break-all">
+                            {config.cameraStreamUrlMjpeg.replace(/user=[^&]+&pwd=[^&]+/, 'user=****&pwd=****')}
+                          </p>
+                          <p className="text-xs opacity-40 mt-2">
+                            Kamera eingeschaltet? Netzwerk erreichbar? Seite muss über HTTP laufen (kein HTTPS → Mixed Content).
+                          </p>
+                          <button
+                            onClick={() => { setStreamError(false); setStreamKey((k) => k + 1) }}
+                            className="mt-3 text-xs text-white/70 hover:text-white border border-white/20 hover:border-white/40 px-3 py-1.5 rounded transition-colors"
+                          >
+                            Erneut verbinden
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <Camera className="w-12 h-12 mx-auto mb-2 opacity-40" />
+                          <p className="text-sm opacity-70">Keine MJPEG-URL konfiguriert</p>
+                          <p className="text-xs opacity-50 mt-2">
+                            Stream-URL (MJPEG) im Tab Konfiguration setzen
+                          </p>
+                        </>
+                      )}
                     </div>
-                  </div>
+                  )}
                 </>
               ) : (
                 <div className="text-center">
