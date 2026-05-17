@@ -1,7 +1,6 @@
 package com.stollenhof.zeiterfassung
 
 import android.Manifest
-import android.app.TimePickerDialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -33,15 +32,19 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.Assessment
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Button
@@ -49,8 +52,11 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -59,8 +65,10 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -75,9 +83,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -266,6 +274,8 @@ private fun HomeScreen(
                         ActivityRow(
                             activity = activity,
                             now = now,
+                            onPause = { viewModel.pause(activity) },
+                            onResume = { viewModel.resume(activity) },
                             onStop = { viewModel.stop(activity) },
                             onDelete = { viewModel.delete(activity) }
                         )
@@ -307,87 +317,136 @@ private fun HomeScreen(
 private fun ReportDialog(activities: List<Activity>, onDismiss: () -> Unit) {
     var period by remember { mutableStateOf(ReportPeriod.DAY) }
     val report = remember(activities, period) { buildReport(activities, period) }
+    val entryCount = report.lines.sumOf { it.count }
+    val periodLabel = when (period) {
+        ReportPeriod.DAY -> "Heute"
+        ReportPeriod.WEEK -> "Diese Woche"
+        ReportPeriod.MONTH -> "Dieser Monat"
+    }
 
     Dialog(onDismissRequest = onDismiss) {
         Card(shape = MaterialTheme.shapes.large) {
             Column(
                 modifier = Modifier
-                    .padding(24.dp)
+                    .padding(20.dp)
                     .verticalScroll(rememberScrollState())
             ) {
-                Text("Bericht", fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(16.dp))
-
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ReportPeriod.entries.forEach { p ->
-                        if (p == period) {
-                            Button(
-                                onClick = { period = p },
-                                modifier = Modifier.weight(1f)
-                            ) { Text(p.label) }
-                        } else {
-                            OutlinedButton(
-                                onClick = { period = p },
-                                modifier = Modifier.weight(1f)
-                            ) { Text(p.label) }
-                        }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Bericht",
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Schließen")
                     }
                 }
 
-                Spacer(Modifier.height(20.dp))
-                Text(
-                    "Gesamt: ${formatDuration(report.totalMillis)}",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold
-                )
                 Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ReportPeriod.entries.forEach { p ->
+                        FilterChip(
+                            selected = p == period,
+                            onClick = { period = p },
+                            label = { Text(p.label) },
+                            modifier = Modifier.weight(1f),
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                            )
+                        )
+                    }
+                }
 
-                if (report.lines.isEmpty()) {
-                    Text(
-                        "Keine Tätigkeiten in diesem Zeitraum.",
-                        color = LocalContentColor.current.copy(alpha = 0.7f),
-                        fontSize = 14.sp
+                Spacer(Modifier.height(16.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.large,
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
                     )
+                ) {
+                    Column(modifier = Modifier.padding(20.dp)) {
+                        Text(periodLabel, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            formatDuration(report.totalMillis),
+                            fontSize = 34.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "${report.lines.size} Tätigkeiten · $entryCount Erfassungen",
+                            fontSize = 13.sp
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(16.dp))
+                if (report.lines.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "Keine Tätigkeiten in diesem Zeitraum.",
+                            color = LocalContentColor.current.copy(alpha = 0.7f),
+                            fontSize = 14.sp
+                        )
+                    }
                 } else {
                     report.lines.forEach { line ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(line.name, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                        val fraction =
+                            if (report.totalMillis > 0)
+                                line.totalMillis.toFloat() / report.totalMillis
+                            else 0f
+                        Column(modifier = Modifier.padding(vertical = 8.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    "${line.count}× erfasst",
-                                    fontSize = 12.sp,
-                                    color = LocalContentColor.current.copy(alpha = 0.7f)
+                                    line.name,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 16.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    formatDuration(line.totalMillis),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 16.sp
                                 )
                             }
+                            Spacer(Modifier.height(6.dp))
+                            LinearProgressIndicator(
+                                progress = fraction,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(8.dp)
+                                    .clip(RoundedCornerShape(4.dp))
+                            )
+                            Spacer(Modifier.height(4.dp))
                             Text(
-                                formatDuration(line.totalMillis),
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp
+                                "${line.count}× · ${(fraction * 100).toInt()} %",
+                                fontSize = 12.sp,
+                                color = LocalContentColor.current.copy(alpha = 0.7f)
                             )
                         }
                     }
-                }
-
-                Spacer(Modifier.height(12.dp))
-                TextButton(
-                    onClick = onDismiss,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.textButtonColors(
-                        contentColor = LocalContentColor.current.copy(alpha = 0.7f)
-                    )
-                ) {
-                    Text("Schließen")
                 }
             }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SettingsDialog(
     viewModel: MainViewModel,
@@ -395,9 +454,43 @@ private fun SettingsDialog(
     onPickSound: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    val context = LocalContext.current
+    var showTimePicker by remember { mutableStateOf(false) }
+
     Dialog(onDismissRequest = onDismiss) {
         Card(shape = MaterialTheme.shapes.large) {
+            if (showTimePicker) {
+                val state = rememberTimePickerState(
+                    initialHour = viewModel.alarmHour,
+                    initialMinute = viewModel.alarmMinute,
+                    is24Hour = true
+                )
+                Column(
+                    modifier = Modifier
+                        .padding(24.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    Text("Weckzeit", fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(20.dp))
+                    TimePicker(state = state)
+                    Spacer(Modifier.height(16.dp))
+                    Button(
+                        onClick = {
+                            viewModel.setAlarm(state.hour, state.minute)
+                            showTimePicker = false
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Wecker stellen") }
+                    Spacer(Modifier.height(8.dp))
+                    TextButton(
+                        onClick = { showTimePicker = false },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.textButtonColors(
+                            contentColor = LocalContentColor.current.copy(alpha = 0.7f)
+                        )
+                    ) { Text("Abbrechen") }
+                }
+                return@Card
+            }
             Column(
                 modifier = Modifier
                     .padding(24.dp)
@@ -464,15 +557,7 @@ private fun SettingsDialog(
                 )
                 Spacer(Modifier.height(10.dp))
                 Button(
-                    onClick = {
-                        TimePickerDialog(
-                            context,
-                            { _, h, m -> viewModel.setAlarm(h, m) },
-                            viewModel.alarmHour,
-                            viewModel.alarmMinute,
-                            true
-                        ).show()
-                    },
+                    onClick = { showTimePicker = true },
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Icon(Icons.Default.Alarm, contentDescription = null)
@@ -534,6 +619,8 @@ private fun SettingsDialog(
 private fun ActivityRow(
     activity: Activity,
     now: Long,
+    onPause: () -> Unit,
+    onResume: () -> Unit,
     onStop: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -581,6 +668,23 @@ private fun ActivityRow(
                     MaterialTheme.colorScheme.onSurface
             )
             if (activity.isRunning) {
+                if (activity.isPaused) {
+                    IconButton(onClick = onResume) {
+                        Icon(
+                            Icons.Default.PlayArrow,
+                            contentDescription = "Fortsetzen",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                } else {
+                    IconButton(onClick = onPause) {
+                        Icon(
+                            Icons.Default.Pause,
+                            contentDescription = "Pause",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
                 IconButton(onClick = onStop) {
                     Icon(
                         Icons.Default.Stop,
@@ -679,7 +783,11 @@ private val timeFormat = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.GERMANY)
 
 private fun subtitle(activity: Activity): String {
     val start = timeFormat.format(Date(activity.startTime))
-    return if (activity.isRunning) "läuft seit $start" else "Start: $start"
+    return when {
+        activity.isPaused -> "pausiert · seit $start"
+        activity.isRunning -> "läuft seit $start"
+        else -> "Start: $start"
+    }
 }
 
 private fun formatDuration(millis: Long): String {
