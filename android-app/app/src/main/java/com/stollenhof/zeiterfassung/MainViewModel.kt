@@ -1,0 +1,56 @@
+package com.stollenhof.zeiterfassung
+
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.stollenhof.zeiterfassung.data.Activity
+import com.stollenhof.zeiterfassung.data.AppDatabase
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+
+class MainViewModel(app: Application) : AndroidViewModel(app) {
+
+    private val dao = AppDatabase.get(app).activityDao()
+
+    val activities: StateFlow<List<Activity>> =
+        dao.observeAll().stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = emptyList()
+        )
+
+    fun addWithDuration(name: String, note: String, minutes: Long) {
+        val cleanName = name.trim().ifBlank { "Tätigkeit" }
+        val end = System.currentTimeMillis()
+        val start = end - minutes.coerceAtLeast(0) * 60_000L
+        viewModelScope.launch {
+            dao.insert(Activity(name = cleanName, note = note.trim(), startTime = start, endTime = end))
+        }
+    }
+
+    fun startTimer(name: String, note: String) {
+        val cleanName = name.trim().ifBlank { "Tätigkeit" }
+        viewModelScope.launch {
+            dao.insert(
+                Activity(
+                    name = cleanName,
+                    note = note.trim(),
+                    startTime = System.currentTimeMillis(),
+                    endTime = null
+                )
+            )
+        }
+    }
+
+    fun stop(activity: Activity) {
+        viewModelScope.launch {
+            dao.update(activity.copy(endTime = System.currentTimeMillis()))
+        }
+    }
+
+    fun delete(activity: Activity) {
+        viewModelScope.launch { dao.delete(activity) }
+    }
+}
