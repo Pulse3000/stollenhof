@@ -38,6 +38,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Alarm
+import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.MusicNote
@@ -192,6 +193,7 @@ private fun HomeScreen(
     val activities by viewModel.activities.collectAsState()
     var showDialog by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    var showReport by remember { mutableStateOf(false) }
 
     // Live tick so running timers update every second.
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -214,6 +216,9 @@ private fun HomeScreen(
                     actionIconContentColor = LocalContentColor.current
                 ),
                 actions = {
+                    IconButton(onClick = { showReport = true }) {
+                        Icon(Icons.Default.Assessment, contentDescription = "Berichte")
+                    }
                     IconButton(onClick = { showSettings = true }) {
                         Icon(Icons.Default.Settings, contentDescription = "Einstellungen")
                     }
@@ -291,6 +296,95 @@ private fun HomeScreen(
             onPickSound = onPickSound,
             onDismiss = { showSettings = false }
         )
+    }
+
+    if (showReport) {
+        ReportDialog(activities = activities, onDismiss = { showReport = false })
+    }
+}
+
+@Composable
+private fun ReportDialog(activities: List<Activity>, onDismiss: () -> Unit) {
+    var period by remember { mutableStateOf(ReportPeriod.DAY) }
+    val report = remember(activities, period) { buildReport(activities, period) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(shape = MaterialTheme.shapes.large) {
+            Column(
+                modifier = Modifier
+                    .padding(24.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                Text("Bericht", fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(16.dp))
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ReportPeriod.entries.forEach { p ->
+                        if (p == period) {
+                            Button(
+                                onClick = { period = p },
+                                modifier = Modifier.weight(1f)
+                            ) { Text(p.label) }
+                        } else {
+                            OutlinedButton(
+                                onClick = { period = p },
+                                modifier = Modifier.weight(1f)
+                            ) { Text(p.label) }
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(20.dp))
+                Text(
+                    "Gesamt: ${formatDuration(report.totalMillis)}",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.height(12.dp))
+
+                if (report.lines.isEmpty()) {
+                    Text(
+                        "Keine Tätigkeiten in diesem Zeitraum.",
+                        color = LocalContentColor.current.copy(alpha = 0.7f),
+                        fontSize = 14.sp
+                    )
+                } else {
+                    report.lines.forEach { line ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(line.name, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                                Text(
+                                    "${line.count}× erfasst",
+                                    fontSize = 12.sp,
+                                    color = LocalContentColor.current.copy(alpha = 0.7f)
+                                )
+                            }
+                            Text(
+                                formatDuration(line.totalMillis),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp
+                            )
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(12.dp))
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = LocalContentColor.current.copy(alpha = 0.7f)
+                    )
+                ) {
+                    Text("Schließen")
+                }
+            }
+        }
     }
 }
 

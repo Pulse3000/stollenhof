@@ -41,7 +41,11 @@ object AlarmScheduler {
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
         }
-        if (!target.after(now)) target.add(Calendar.DAY_OF_YEAR, 1)
+        // Roll to the next day if the time today is in the past or
+        // within a minute (avoids an immediate re-fire when re-arming).
+        if (target.timeInMillis <= now.timeInMillis + 60_000L) {
+            target.add(Calendar.DAY_OF_YEAR, 1)
+        }
         return target.timeInMillis
     }
 
