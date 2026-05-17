@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
 import android.media.RingtoneManager
+import android.net.Uri
 import android.os.Build
 import androidx.core.app.NotificationCompat
 
@@ -15,12 +16,29 @@ class AlarmReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val alarmSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+
+        val customSound = SettingsStore(context).alarmSoundUri?.let { Uri.parse(it) }
+        val alarmSound = customSound
+            ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
             ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+
+        if (customSound != null) {
+            runCatching {
+                context.grantUriPermission(
+                    "com.android.systemui",
+                    customSound,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            }
+        }
+
+        // Notification channels cache their sound; vary the id so a new
+        // pick takes effect instead of keeping the old tone.
+        val channelId = CHANNEL_ID + "_" + (customSound?.hashCode() ?: 0)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
-                CHANNEL_ID,
+                channelId,
                 "Wecker",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
@@ -44,7 +62,7 @@ class AlarmReceiver : BroadcastReceiver() {
             PendingIntent.FLAG_IMMUTABLE
         )
 
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+        val notification = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle("Zeiterfassung")
             .setContentText("Zeit für deine Tätigkeit – jetzt erfassen!")

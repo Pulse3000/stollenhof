@@ -29,9 +29,36 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     var alarmMinute by mutableIntStateOf(settings.alarmMinute)
         private set
 
+    var backgroundImageUri by mutableStateOf(settings.backgroundImageUri)
+        private set
+    var alarmSoundUri by mutableStateOf(settings.alarmSoundUri)
+        private set
+
     fun setBackground(index: Int) {
         backgroundIndex = index
+        backgroundImageUri = null
         settings.backgroundIndex = index
+        settings.backgroundImageUri = null
+    }
+
+    fun setBackgroundImage(uri: String) {
+        backgroundImageUri = uri
+        settings.backgroundImageUri = uri
+    }
+
+    fun clearBackgroundImage() {
+        backgroundImageUri = null
+        settings.backgroundImageUri = null
+    }
+
+    fun setAlarmSound(uri: String) {
+        alarmSoundUri = uri
+        settings.alarmSoundUri = uri
+    }
+
+    fun clearAlarmSound() {
+        alarmSoundUri = null
+        settings.alarmSoundUri = null
     }
 
     fun setAlarm(hour: Int, minute: Int) {
