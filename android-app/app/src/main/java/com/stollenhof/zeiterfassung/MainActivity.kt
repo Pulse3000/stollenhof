@@ -1,10 +1,22 @@
 package com.stollenhof.zeiterfassung
 
+import android.Manifest
+import android.app.TimePickerDialog
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,10 +31,17 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -31,6 +50,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -39,7 +59,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -49,13 +71,20 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.core.content.ContextCompat
 import com.stollenhof.zeiterfassung.data.Activity
 import com.stollenhof.zeiterfassung.ui.theme.ZeiterfassungTheme
+import com.stollenhof.zeiterfassung.ui.theme.backgroundAt
+import com.stollenhof.zeiterfassung.ui.theme.backgrounds
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -65,27 +94,104 @@ class MainActivity : ComponentActivity() {
 
     private val viewModel: MainViewModel by viewModels()
 
+    private val notificationPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
+    private val pickImage =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            uri?.let {
+                persist(it)
+                viewModel.setBackgroundImage(it.toString())
+            }
+        }
+
+    private val pickSound =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            uri?.let {
+                persist(it)
+                viewModel.setAlarmSound(it.toString())
+            }
+        }
+
+    private fun persist(uri: Uri) {
+        runCatching {
+            contentResolver.takePersistableUriPermission(
+                uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        requestNotificationPermissionIfNeeded()
         setContent {
             ZeiterfassungTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
-                ) {
-                    HomeScreen(viewModel)
+                val imageUri = viewModel.backgroundImageUri
+                if (imageUri != null) {
+                    val bitmap = rememberBackgroundBitmap(imageUri)
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        if (bitmap != null) {
+                            Image(
+                                bitmap = bitmap,
+                                contentDescription = null,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Box(
+                                Modifier
+                                    .fillMaxSize()
+                                    .background(Color(0xFF15171C))
+                            )
+                        }
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = 0.35f))
+                        )
+                        CompositionLocalProvider(LocalContentColor provides Color.White) {
+                            HomeScreen(viewModel, ::launchImagePicker, ::launchSoundPicker)
+                        }
+                    }
+                } else {
+                    val bg = backgroundAt(viewModel.backgroundIndex)
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        color = bg.color,
+                        contentColor = bg.onColor
+                    ) {
+                        HomeScreen(viewModel, ::launchImagePicker, ::launchSoundPicker)
+                    }
                 }
             }
+        }
+    }
+
+    private fun launchImagePicker() = pickImage.launch(arrayOf("image/*"))
+
+    private fun launchSoundPicker() = pickSound.launch(arrayOf("audio/*"))
+
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun HomeScreen(viewModel: MainViewModel) {
+private fun HomeScreen(
+    viewModel: MainViewModel,
+    onPickImage: () -> Unit,
+    onPickSound: () -> Unit
+) {
     val activities by viewModel.activities.collectAsState()
     var showDialog by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
 
     // Live tick so running timers update every second.
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -98,8 +204,21 @@ private fun HomeScreen(viewModel: MainViewModel) {
     }
 
     Scaffold(
+        containerColor = Color.Transparent,
         topBar = {
-            TopAppBar(title = { Text("Zeiterfassung", fontWeight = FontWeight.SemiBold) })
+            TopAppBar(
+                title = { Text("Zeiterfassung", fontWeight = FontWeight.SemiBold) },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                    titleContentColor = LocalContentColor.current,
+                    actionIconContentColor = LocalContentColor.current
+                ),
+                actions = {
+                    IconButton(onClick = { showSettings = true }) {
+                        Icon(Icons.Default.Settings, contentDescription = "Einstellungen")
+                    }
+                }
+            )
         }
     ) { inner ->
         Column(
@@ -130,7 +249,7 @@ private fun HomeScreen(viewModel: MainViewModel) {
                 ) {
                     Text(
                         "Noch keine Tätigkeiten erfasst.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = LocalContentColor.current.copy(alpha = 0.7f)
                     )
                 }
             } else {
@@ -163,6 +282,157 @@ private fun HomeScreen(viewModel: MainViewModel) {
                 showDialog = false
             }
         )
+    }
+
+    if (showSettings) {
+        SettingsDialog(
+            viewModel = viewModel,
+            onPickImage = onPickImage,
+            onPickSound = onPickSound,
+            onDismiss = { showSettings = false }
+        )
+    }
+}
+
+@Composable
+private fun SettingsDialog(
+    viewModel: MainViewModel,
+    onPickImage: () -> Unit,
+    onPickSound: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    Dialog(onDismissRequest = onDismiss) {
+        Card(shape = MaterialTheme.shapes.large) {
+            Column(
+                modifier = Modifier
+                    .padding(24.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                Text("Einstellungen", fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+
+                Spacer(Modifier.height(20.dp))
+                Text("Hintergrund", fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    backgrounds.forEachIndexed { index, bg ->
+                        val selected = index == viewModel.backgroundIndex
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(bg.color)
+                                .border(
+                                    BorderStroke(
+                                        if (selected) 3.dp else 1.dp,
+                                        if (selected) MaterialTheme.colorScheme.primary
+                                        else MaterialTheme.colorScheme.outline
+                                    ),
+                                    CircleShape
+                                )
+                                .clickable { viewModel.setBackground(index) }
+                        )
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                OutlinedButton(
+                    onClick = onPickImage,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Image, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        if (viewModel.backgroundImageUri != null) "Bild ändern"
+                        else "Eigenes Bild wählen"
+                    )
+                }
+                if (viewModel.backgroundImageUri != null) {
+                    Spacer(Modifier.height(8.dp))
+                    TextButton(
+                        onClick = { viewModel.clearBackgroundImage() },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Bild entfernen")
+                    }
+                }
+
+                Spacer(Modifier.height(24.dp))
+                Text("Wecker", fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = if (viewModel.alarmEnabled)
+                        "Aktiv um %02d:%02d Uhr".format(
+                            viewModel.alarmHour, viewModel.alarmMinute
+                        )
+                    else "Kein Wecker gestellt",
+                    color = LocalContentColor.current.copy(alpha = 0.7f),
+                    fontSize = 14.sp
+                )
+                Spacer(Modifier.height(10.dp))
+                Button(
+                    onClick = {
+                        TimePickerDialog(
+                            context,
+                            { _, h, m -> viewModel.setAlarm(h, m) },
+                            viewModel.alarmHour,
+                            viewModel.alarmMinute,
+                            true
+                        ).show()
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Alarm, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (viewModel.alarmEnabled) "Wecker ändern" else "Wecker stellen")
+                }
+                if (viewModel.alarmEnabled) {
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = { viewModel.cancelAlarm() },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Wecker löschen")
+                    }
+                }
+
+                Spacer(Modifier.height(14.dp))
+                Text(
+                    text = if (viewModel.alarmSoundUri != null) "Ton: eigene Datei"
+                    else "Ton: Standard-Wecker",
+                    color = LocalContentColor.current.copy(alpha = 0.7f),
+                    fontSize = 14.sp
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = onPickSound,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.MusicNote, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Eigenen Ton wählen")
+                }
+                if (viewModel.alarmSoundUri != null) {
+                    Spacer(Modifier.height(8.dp))
+                    TextButton(
+                        onClick = { viewModel.clearAlarmSound() },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Standard-Ton verwenden")
+                    }
+                }
+
+                Spacer(Modifier.height(4.dp))
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = LocalContentColor.current.copy(alpha = 0.7f)
+                    )
+                ) {
+                    Text("Schließen")
+                }
+            }
+        }
     }
 }
 

@@ -11,6 +11,9 @@ kein Internet und kein Konto nötig.
 - Oder einen **Live-Timer starten** und später stoppen (läuft sekundengenau)
 - Liste aller erfassten Tätigkeiten mit Start­zeit, Notiz und Gesamtdauer
 - Einträge wieder löschen
+- **Hintergrund wählbar**: 6 Farbdesigns **oder eigenes Bild** aus den Gerätedateien
+- **Wecker-Funktion**: tägliche Erinnerung zu fester Uhrzeit mit Vibration und
+  Standard-Wecker­ton **oder eigener Audiodatei**
 - Helles & dunkles Design (folgt dem System)
 
 ## Fertige APK herunterladen (kein Build nötig)
