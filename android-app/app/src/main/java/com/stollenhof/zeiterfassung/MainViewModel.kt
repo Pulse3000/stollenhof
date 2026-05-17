@@ -107,9 +107,37 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun pause(activity: Activity) {
+        if (!activity.isRunning || activity.isPaused) return
+        viewModelScope.launch {
+            dao.update(activity.copy(pauseStart = System.currentTimeMillis()))
+        }
+    }
+
+    fun resume(activity: Activity) {
+        val pausedAt = activity.pauseStart ?: return
+        viewModelScope.launch {
+            val added = System.currentTimeMillis() - pausedAt
+            dao.update(
+                activity.copy(
+                    pausedMillis = activity.pausedMillis + added.coerceAtLeast(0L),
+                    pauseStart = null
+                )
+            )
+        }
+    }
+
     fun stop(activity: Activity) {
         viewModelScope.launch {
-            dao.update(activity.copy(endTime = System.currentTimeMillis()))
+            val now = System.currentTimeMillis()
+            val foldedPause = activity.pauseStart?.let { (now - it).coerceAtLeast(0L) } ?: 0L
+            dao.update(
+                activity.copy(
+                    endTime = now,
+                    pausedMillis = activity.pausedMillis + foldedPause,
+                    pauseStart = null
+                )
+            )
         }
     }
 

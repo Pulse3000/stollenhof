@@ -8,7 +8,8 @@ kein Internet und kein Konto nötig.
 
 - Großer **„Hinzufügen“**-Button auf der Startseite
 - Tätigkeit mit fester **Dauer in Minuten** erfassen
-- Oder einen **Live-Timer starten** und später stoppen (läuft sekundengenau)
+- Oder einen **Live-Timer starten**, **pausieren/fortsetzen** und später
+  stoppen (läuft sekundengenau, Pausen werden abgezogen)
 - Liste aller erfassten Tätigkeiten mit Start­zeit, Notiz und Gesamtdauer
 - Einträge wieder löschen
 - **Berichte**: Tages-, Wochen- und Monatsübersicht mit Gesamtzeit und
