@@ -76,6 +76,12 @@ class AlarmReceiver : BroadcastReceiver() {
             .build()
 
         nm.notify(NOTIFICATION_ID, notification)
+
+        // setAlarmClock is one-shot; re-arm for the next day so it repeats daily.
+        val settings = SettingsStore(context)
+        if (settings.alarmEnabled) {
+            AlarmScheduler.schedule(context, settings.alarmHour, settings.alarmMinute)
+        }
     }
 
     private companion object {
