@@ -21,6 +21,7 @@ import {
   Warehouse,
   Trees,
   Eye,
+  Cpu,
 } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
@@ -34,6 +35,7 @@ const navGroups: { title: string; items: NavItem[] }[] = [
       { href: '/', label: 'Übersicht', icon: LayoutDashboard },
       { href: '/stall', label: 'Stallbuch', icon: Warehouse },
       { href: '/stallwache', label: 'Stallwache', icon: Eye },
+      { href: '/stallsimulator', label: 'KI-Simulator', icon: Cpu },
       { href: '/tiere', label: 'Tiere', icon: Beef },
       { href: '/milch', label: 'Milchdaten', icon: Droplets },
       { href: '/weide', label: 'Weiden', icon: Trees },
