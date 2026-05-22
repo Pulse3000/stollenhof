@@ -241,30 +241,34 @@ export const initialWeiden: Weide[] = [
 
 // ---------- Stallwache (KI-Kalbungswache) ----------
 // Web-Dashboard für das stallwache-skill Python-Backend
-// (YOLOv8 + RTSP-Kamera via go2rtc + Telegram-Alerts)
+// (YOLOv8 + RTSP-Kamera via go2rtc + Cloudflare Tunnel + Telegram-Alerts)
 // Kamera: LSC Smart Connect Indoor IP Camera (Tuya-basiert)
 //   LAN-IP: 192.168.178.104  |  MAC: 8C:5C:53:A6:94:FB
 //   Device-ID: bfd872a00d4e8fc02bkiua
-// go2rtc als RTSP→Browser-Bridge (MJPEG / WebRTC / HLS)
+//
+// SICHERHEIT: RTSP-Zugangsdaten (URL + Passwort) gehören NICHT ins Frontend.
+//   Sie werden ausschließlich in go2rtc.yaml auf dem lokalen Server konfiguriert.
+//   Das Frontend speichert nur HTTPS-URLs ohne Authentifizierungsdaten.
+//
 // https://github.com/Pulse3000/stallwache-skill
 
 export type StallwacheConfig = {
   enabled: boolean
-  apiUrl: string // z.B. http://192.168.178.50:8080
+  apiUrl: string               // Python-Backend API, z.B. http://192.168.178.50:8080
   cameraName: string
-  cameraIp: string             // lokale IP der Kamera
-  cameraStreamUrl: string      // RTSP-URL (für Python-Backend & go2rtc, ONVIF-Auth)
-  cameraStreamUrlHls: string   // HLS-URL via Cloudflare Tunnel (HTTPS-fähig)
-  cameraStreamUrlMjpeg: string // optionaler MJPEG-Endpunkt (LAN-Fallback)
-  cameraStreamUrlDdns: string  // legacy / generischer externer Zugang
-  cameraUser: string           // ONVIF-Benutzer (Standard: admin)
-  go2rtcUrl: string            // lokale go2rtc Base-URL
-  go2rtcPublicUrl: string      // öffentliche go2rtc-URL via Cloudflare Tunnel
-  go2rtcStreamName: string     // Name des Streams in go2rtc.yaml
+  cameraIp: string             // LAN-IP der Kamera (nur zur Info – kein Auth)
+  // Stream-URLs: Alle HTTPS, kein Passwort enthalten
+  cameraStreamUrlHls: string   // go2rtc HLS via Cloudflare Tunnel
+  cameraStreamUrlMjpeg: string // go2rtc MJPEG via Cloudflare Tunnel (Fallback)
+  go2rtcUrl: string            // Lokale go2rtc Base-URL (kein Auth)
+  go2rtcPublicUrl: string      // Cloudflare-Tunnel-URL (kein Auth)
+  go2rtcStreamName: string     // Stream-Name in go2rtc.yaml
+  // KI-Modell
   modelPath: string
-  confidenceThreshold: number  // 0..1
-  iouThreshold: number         // 0..1
+  confidenceThreshold: number
+  iouThreshold: number
   device: 'cpu' | 'cuda' | 'mps'
+  // Telegram
   telegramEnabled: boolean
   telegramBotToken: string
   telegramChatId: string
@@ -278,14 +282,9 @@ export const defaultStallwacheConfig: StallwacheConfig = {
   apiUrl: 'http://192.168.178.50:8080',
   cameraName: 'Abkalbestall Süd',
   cameraIp: '192.168.178.104',
-  // RTSP-Pfad bei LSC/Tuya-Kameras: /live/ch0 mit ONVIF-Auth
-  // ONVIF-Passwort wird in der LSC-App unter "PC-Ansicht/ONVIF" gesetzt
-  cameraStreamUrl: 'rtsp://admin:DEIN_ONVIF_PASSWORT@192.168.178.104:554/live/ch0',
-  // HLS via Cloudflare Tunnel (HTTPS – funktioniert von Vercel aus)
+  // Keine RTSP-URL, kein Passwort – Konfiguration gehört in go2rtc.yaml auf dem Server
   cameraStreamUrlHls: 'https://stream.stollenhof.de/api/stream.m3u8?src=stallwache',
   cameraStreamUrlMjpeg: 'https://stream.stollenhof.de/api/stream.mjpeg?src=stallwache',
-  cameraStreamUrlDdns: '',
-  cameraUser: 'admin',
   go2rtcUrl: 'http://192.168.178.50:1984',
   go2rtcPublicUrl: 'https://stream.stollenhof.de',
   go2rtcStreamName: 'stallwache',

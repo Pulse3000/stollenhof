@@ -430,62 +430,69 @@ export default function StallwachePage() {
 
       {/* TAB: Live */}
       {tab === 'live' && (
-        <div className="space-y-6">
-          {/* Kamera-Preview */}
-          <div className="bg-white rounded-xl border border-stone-200 overflow-hidden">
-            <div className="px-6 py-4 border-b border-stone-100 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Camera className="w-4 h-4 text-stone-500" />
-                <h2 className="font-semibold text-stone-900">Kamera-Vorschau</h2>
+        <div className="space-y-4">
+          {/* Kamera-Player */}
+          <div className="rounded-2xl overflow-hidden bg-stone-950 shadow-xl">
+            {/* Toolbar */}
+            <div className="px-4 py-3 bg-stone-900/80 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2.5">
+                {config.enabled && (
+                  <span className="flex items-center gap-1.5 text-xs font-bold text-white bg-red-600 px-2.5 py-1 rounded-full">
+                    <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                    LIVE
+                  </span>
+                )}
+                <span className="text-stone-300 text-sm font-medium">{config.cameraName}</span>
+                {config.enabled && (
+                  <span className="text-stone-500 text-xs font-mono">
+                    {status.fps.toFixed(1)} fps
+                  </span>
+                )}
               </div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs text-stone-400 mr-1">{config.cameraName}</span>
+              <div className="flex items-center gap-0.5">
                 {config.enabled && config.cameraStreamUrlHls && (
                   <>
                     <button
                       onClick={manualReconnect}
-                      className="p-1.5 rounded hover:bg-stone-100 text-stone-400 hover:text-stone-700 transition-colors"
-                      title="Stream neu verbinden"
+                      className="p-2 rounded-lg hover:bg-stone-700/60 text-stone-400 hover:text-white transition-colors"
+                      title="Neu verbinden"
                     >
-                      <RefreshCw className="w-3.5 h-3.5" />
+                      <RefreshCw className="w-4 h-4" />
                     </button>
                     <button
                       onClick={toggleFullscreen}
-                      className="p-1.5 rounded hover:bg-stone-100 text-stone-400 hover:text-stone-700 transition-colors"
+                      className="p-2 rounded-lg hover:bg-stone-700/60 text-stone-400 hover:text-white transition-colors"
                       title="Vollbild"
                     >
-                      <Maximize2 className="w-3.5 h-3.5" />
+                      <Maximize2 className="w-4 h-4" />
                     </button>
                     <a
                       href={config.cameraStreamUrlHls}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="p-1.5 rounded hover:bg-stone-100 text-stone-400 hover:text-stone-700 transition-colors"
+                      className="p-2 rounded-lg hover:bg-stone-700/60 text-stone-400 hover:text-white transition-colors"
                       title="In neuem Tab öffnen"
                     >
-                      <ExternalLink className="w-3.5 h-3.5" />
+                      <ExternalLink className="w-4 h-4" />
                     </a>
                   </>
                 )}
               </div>
             </div>
-            <div ref={previewRef} className="aspect-video bg-stone-950 relative flex items-center justify-center text-stone-400">
+
+            {/* Video */}
+            <div
+              ref={previewRef}
+              className="aspect-video bg-stone-950 relative flex items-center justify-center text-stone-500"
+            >
               {config.enabled ? (
                 <>
-                  <div className="absolute top-3 left-3 flex items-center gap-2 bg-red-600/90 text-white px-2 py-1 rounded text-xs font-semibold z-10">
-                    <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
-                    LIVE
-                  </div>
-                  <div className="absolute top-3 right-3 bg-black/60 text-white px-2 py-1 rounded text-xs font-mono z-10">
-                    {status.fps.toFixed(1)} FPS · 1280×720
-                  </div>
-
                   {config.cameraStreamUrlHls && !streamError ? (
                     <>
                       <video
                         ref={videoRef}
                         key={streamKey}
-                        className="absolute inset-0 w-full h-full object-contain bg-black"
+                        className="absolute inset-0 w-full h-full object-contain"
                         autoPlay
                         muted
                         playsInline
@@ -493,43 +500,46 @@ export default function StallwachePage() {
                       >
                         Stream wird geladen oder Browser nicht unterstützt.
                       </video>
-                      <div className="absolute bottom-3 left-3 bg-black/50 text-white text-[10px] px-2 py-1 rounded font-mono z-10 pointer-events-none">
+                      <div className="absolute bottom-3 right-3 bg-stone-900/70 text-stone-400 text-[10px] px-2 py-1 rounded font-mono pointer-events-none">
                         HLS · go2rtc via Cloudflare
                       </div>
                     </>
                   ) : (
-                    <div className="text-center px-6">
+                    <div className="text-center px-6 max-w-sm">
                       {streamError ? (
                         <>
-                          <Camera className="w-12 h-12 mx-auto mb-2 text-red-400 opacity-80" />
-                          <p className="text-sm text-red-400">Stream nicht erreichbar</p>
-                          <p className="text-xs opacity-50 font-mono mt-1 break-all">
+                          <Camera className="w-10 h-10 mx-auto mb-3 text-stone-600" />
+                          <p className="text-sm font-medium text-stone-300 mb-1">Stream nicht erreichbar</p>
+                          <p className="text-xs text-stone-600 font-mono break-all mb-3">
                             {config.cameraStreamUrlHls}
                           </p>
                           {reconnectAttempt < 5 ? (
-                            <p className="text-xs text-amber-400 mt-2 flex items-center justify-center gap-1.5">
+                            <p className="text-xs text-amber-500 flex items-center justify-center gap-1.5">
                               <RefreshCw className="w-3 h-3 animate-spin" />
-                              Erneuter Versuch ({reconnectAttempt + 1}/5) …
+                              Erneuter Versuch {reconnectAttempt + 1}/5…
                             </p>
                           ) : (
-                            <p className="text-xs opacity-40 mt-2">
-                              Läuft go2rtc? Cloudflare Tunnel aktiv? Kamera-RTSP erreichbar?
+                            <p className="text-xs text-stone-600">
+                              go2rtc laufen? Cloudflare Tunnel aktiv?
                             </p>
                           )}
                           <button
                             onClick={manualReconnect}
-                            className="mt-3 text-xs text-white/70 hover:text-white border border-white/20 hover:border-white/40 px-3 py-1.5 rounded transition-colors"
+                            className="mt-4 text-xs text-stone-300 hover:text-white border border-stone-700 hover:border-stone-500 px-4 py-2 rounded-lg transition-colors"
                           >
-                            Jetzt neu verbinden
+                            Neu verbinden
                           </button>
                         </>
                       ) : (
                         <>
-                          <Camera className="w-12 h-12 mx-auto mb-2 opacity-40" />
-                          <p className="text-sm opacity-70">Kein Stream konfiguriert</p>
-                          <p className="text-xs opacity-50 mt-2">
-                            HLS-URL im Tab Konfiguration eintragen (Setup-Anleitung im Tab Setup)
-                          </p>
+                          <Camera className="w-10 h-10 mx-auto mb-3 text-stone-700" />
+                          <p className="text-sm text-stone-500">Kein Stream konfiguriert</p>
+                          <button
+                            onClick={() => setTab('config')}
+                            className="mt-3 text-xs text-stone-400 hover:text-white underline"
+                          >
+                            HLS-URL eintragen →
+                          </button>
                         </>
                       )}
                     </div>
@@ -537,13 +547,45 @@ export default function StallwachePage() {
                 </>
               ) : (
                 <div className="text-center">
-                  <WifiOff className="w-12 h-12 mx-auto mb-2 opacity-40" />
-                  <p className="text-sm">System gestoppt</p>
-                  <p className="text-xs opacity-60 mt-1">Klicke auf "Starten" um den Stream zu aktivieren</p>
+                  <WifiOff className="w-10 h-10 mx-auto mb-3 text-stone-700" />
+                  <p className="text-sm text-stone-500">System gestoppt</p>
+                  <p className="text-xs text-stone-600 mt-1">
+                    Oben auf <strong className="text-stone-400">„Starten"</strong> klicken
+                  </p>
                 </div>
               )}
             </div>
+
+            {/* Status-Bar unten */}
+            <div className="px-4 py-2.5 bg-stone-900/60 flex items-center justify-between text-xs text-stone-500">
+              <div className="flex items-center gap-4">
+                <span className="flex items-center gap-1.5">
+                  <span className={`w-1.5 h-1.5 rounded-full ${config.enabled && status.online ? 'bg-green-500' : 'bg-stone-600'}`} />
+                  {config.enabled && status.online ? 'Online' : 'Offline'}
+                </span>
+                <span>Laufzeit: {config.enabled ? formatUptime(status.uptimeSekunden) : '–'}</span>
+              </div>
+              <span className="font-mono">{config.go2rtcPublicUrl || '–'}</span>
+            </div>
           </div>
+
+          {/* Alarm-Banner */}
+          {letzteAktivitaet && !letzteAktivitaet.bestaetigt && (
+            <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="font-semibold text-amber-900">Neue Aktivität: {letzteAktivitaet.typ}</p>
+                <p className="text-sm text-amber-800 mt-0.5">{letzteAktivitaet.beschreibung}</p>
+                <p className="text-xs text-amber-700 mt-1">{formatDateTime(letzteAktivitaet.zeitstempel)}</p>
+              </div>
+              <button
+                onClick={() => toggleAck(letzteAktivitaet.id)}
+                className="px-3 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-800 text-white text-xs font-medium shrink-0"
+              >
+                Bestätigen
+              </button>
+            </div>
+          )}
 
           {/* Letzte Ereignisse */}
           <div className="bg-white rounded-xl border border-stone-200">
@@ -592,26 +634,6 @@ export default function StallwachePage() {
               </div>
             )}
           </div>
-
-          {/* Letzte Aktivität / Banner */}
-          {letzteAktivitaet && !letzteAktivitaet.bestaetigt && (
-            <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 flex items-start gap-3">
-              <AlertTriangle className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
-              <div className="flex-1">
-                <p className="font-semibold text-amber-900">
-                  Neue Aktivität: {letzteAktivitaet.typ}
-                </p>
-                <p className="text-sm text-amber-800 mt-0.5">{letzteAktivitaet.beschreibung}</p>
-                <p className="text-xs text-amber-700 mt-1">{formatDateTime(letzteAktivitaet.zeitstempel)}</p>
-              </div>
-              <button
-                onClick={() => toggleAck(letzteAktivitaet.id)}
-                className="px-3 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-800 text-white text-xs font-medium shrink-0"
-              >
-                Bestätigen
-              </button>
-            </div>
-          )}
         </div>
       )}
 
@@ -705,13 +727,28 @@ export default function StallwachePage() {
       {/* TAB: Konfiguration */}
       {tab === 'config' && (
         <div className="space-y-6">
+          {/* Security-Hinweis */}
+          <div className="rounded-xl border border-green-200 bg-green-50 p-4 flex items-start gap-3">
+            <div className="shrink-0 mt-0.5 w-5 h-5 rounded-full bg-green-600 flex items-center justify-center">
+              <svg viewBox="0 0 16 16" fill="white" className="w-3 h-3"><path d="M8 1a5 5 0 0 1 5 5v1.5a1.5 1.5 0 0 1 1.5 1.5v4A1.5 1.5 0 0 1 13 14.5H3A1.5 1.5 0 0 1 1.5 13V9A1.5 1.5 0 0 1 3 7.5V6a5 5 0 0 1 5-5zm0 1a4 4 0 0 0-4 4v1.5h8V6a4 4 0 0 0-4-4zm0 7a1 1 0 1 0 0 2 1 1 0 0 0 0-2z"/></svg>
+            </div>
+            <div>
+              <p className="font-semibold text-green-900 text-sm">Keine Passwörter im Frontend</p>
+              <p className="text-xs text-green-800 mt-0.5">
+                RTSP-URL und ONVIF-Passwort werden <strong>nicht</strong> hier konfiguriert –
+                sie gehören ausschließlich in <code className="font-mono bg-green-100 px-1 rounded">go2rtc.yaml</code> auf
+                dem lokalen Server. Das Dashboard speichert nur passwortfreie HTTPS-URLs (Cloudflare Tunnel).
+              </p>
+            </div>
+          </div>
+
           {/* Kamera */}
           <div className="bg-white rounded-xl border border-stone-200 p-6">
             <h2 className="font-semibold text-stone-900 mb-1 flex items-center gap-2">
-              <Camera className="w-4 h-4 text-stone-500" /> Kamera (LSC Smart Indoor · RTSP → HLS via go2rtc + Cloudflare)
+              <Camera className="w-4 h-4 text-stone-500" /> Kamera & Stream-Endpunkte
             </h2>
             <p className="text-xs text-stone-400 mb-4">
-              LAN-IP: 192.168.178.104 · MAC: 8C:5C:53:A6:94:FB · Device-ID: bfd872a00d4e8fc02bkiua
+              LSC Smart Connect Indoor · LAN-IP: 192.168.178.104 · go2rtc → Cloudflare → HLS
             </p>
             <div className="grid md:grid-cols-2 gap-4">
               <div>
@@ -723,27 +760,6 @@ export default function StallwachePage() {
                 />
               </div>
               <div>
-                <Label>Lokale IP der Kamera</Label>
-                <Input
-                  className="mt-1 font-mono text-sm"
-                  value={config.cameraIp}
-                  onChange={(e) => setConfig({ ...config, cameraIp: e.target.value })}
-                  placeholder="192.168.178.104"
-                />
-              </div>
-              <div>
-                <Label>ONVIF-Benutzer</Label>
-                <Input
-                  className="mt-1 font-mono text-sm"
-                  value={config.cameraUser}
-                  onChange={(e) => setConfig({ ...config, cameraUser: e.target.value })}
-                  placeholder="admin"
-                />
-                <p className="text-xs text-stone-400 mt-1">
-                  In LSC-App unter „PC-Ansicht/ONVIF" festgelegt. Standard: <code>admin</code>.
-                </p>
-              </div>
-              <div>
                 <Label>go2rtc Stream-Name</Label>
                 <Input
                   className="mt-1 font-mono text-sm"
@@ -752,24 +768,11 @@ export default function StallwachePage() {
                   placeholder="stallwache"
                 />
                 <p className="text-xs text-stone-400 mt-1">
-                  Schlüssel in <code>go2rtc.yaml</code> unter <code>streams:</code>
+                  Muss mit dem Schlüssel in <code>go2rtc.yaml → streams:</code> übereinstimmen.
                 </p>
               </div>
               <div className="md:col-span-2">
-                <Label>RTSP-URL (Quelle für go2rtc & Python-Backend)</Label>
-                <Input
-                  className="mt-1 font-mono text-sm"
-                  value={config.cameraStreamUrl}
-                  onChange={(e) => setConfig({ ...config, cameraStreamUrl: e.target.value })}
-                  placeholder="rtsp://admin:PASSWORT@192.168.178.104:554/live/ch0"
-                />
-                <p className="text-xs text-stone-400 mt-1">
-                  LSC/Tuya-Standardpfad: <code>/live/ch0</code>. ONVIF-Passwort vorher in der LSC-App setzen.
-                  Mit VLC testen bevor go2rtc gestartet wird.
-                </p>
-              </div>
-              <div className="md:col-span-2">
-                <Label>HLS-URL (Browser-Vorschau · primär)</Label>
+                <Label>HLS-URL (Browser · primär)</Label>
                 <Input
                   className="mt-1 font-mono text-sm"
                   value={config.cameraStreamUrlHls}
@@ -777,34 +780,28 @@ export default function StallwachePage() {
                   placeholder="https://stream.stollenhof.de/api/stream.m3u8?src=stallwache"
                 />
                 <p className="text-xs text-stone-400 mt-1">
-                  go2rtc-HLS-Endpunkt, exponiert via Cloudflare Tunnel.
-                  Format: <code className="bg-stone-100 px-1 rounded">https://&lt;tunnel&gt;/api/stream.m3u8?src=&lt;name&gt;</code>.
-                  HTTPS-fähig – nötig damit Vercel den Stream einbetten kann.
+                  go2rtc-HLS via Cloudflare Tunnel – HTTPS, kein Passwort in der URL.
+                  Format: <code className="bg-stone-100 px-1 rounded">https://&lt;tunnel&gt;/api/stream.m3u8?src=&lt;name&gt;</code>
                 </p>
               </div>
               <div className="md:col-span-2">
-                <Label>MJPEG-URL (LAN-Fallback · optional)</Label>
+                <Label>MJPEG-URL (Fallback, optional)</Label>
                 <Input
                   className="mt-1 font-mono text-sm"
                   value={config.cameraStreamUrlMjpeg}
                   onChange={(e) => setConfig({ ...config, cameraStreamUrlMjpeg: e.target.value })}
                   placeholder="https://stream.stollenhof.de/api/stream.mjpeg?src=stallwache"
                 />
-                <p className="text-xs text-stone-400 mt-1">
-                  Nur falls Browser kein HLS unterstützt. Über Tunnel auch via HTTPS verfügbar.
-                </p>
               </div>
               <div>
-                <Label>go2rtc Base-URL (lokal)</Label>
+                <Label>go2rtc Local-URL</Label>
                 <Input
                   className="mt-1 font-mono text-sm"
                   value={config.go2rtcUrl}
                   onChange={(e) => setConfig({ ...config, go2rtcUrl: e.target.value })}
                   placeholder="http://192.168.178.50:1984"
                 />
-                <p className="text-xs text-stone-400 mt-1">
-                  Interner Zugriff im LAN (z.B. für Python-Backend).
-                </p>
+                <p className="text-xs text-stone-400 mt-1">Für das Python-Backend im LAN.</p>
               </div>
               <div>
                 <Label>go2rtc Public-URL (Cloudflare)</Label>
@@ -814,9 +811,7 @@ export default function StallwachePage() {
                   onChange={(e) => setConfig({ ...config, go2rtcPublicUrl: e.target.value })}
                   placeholder="https://stream.stollenhof.de"
                 />
-                <p className="text-xs text-stone-400 mt-1">
-                  Öffentlicher HTTPS-Endpunkt via Cloudflare Tunnel.
-                </p>
+                <p className="text-xs text-stone-400 mt-1">HTTPS-Endpunkt via Cloudflare Tunnel.</p>
               </div>
             </div>
           </div>
