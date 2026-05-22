@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import {
   Camera,
@@ -22,6 +22,8 @@ import {
   Power,
   Github,
   RefreshCw,
+  Maximize2,
+  ExternalLink,
 } from 'lucide-react'
 import { usePersistedState } from '@/lib/use-persisted-state'
 import {
@@ -84,6 +86,43 @@ export default function StallwachePage() {
   const [eventOpen, setEventOpen] = useState(false)
   const [editId, setEditId] = useState<number | null>(null)
   const [form, setForm] = useState<Omit<StallwacheEvent, 'id'>>(emptyEvent())
+  const [streamError, setStreamError] = useState(false)
+  const [streamKey, setStreamKey] = useState(0)
+  const [reconnectAttempt, setReconnectAttempt] = useState(0)
+  const previewRef = useRef<HTMLDivElement>(null)
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Auto-reconnect mit Exponential Backoff: 2s, 4s, 8s, 16s, 32s, dann aufgeben
+  useEffect(() => {
+    if (!streamError || !config.enabled || !config.cameraStreamUrlMjpeg) return
+    if (reconnectAttempt >= 5) return
+    const delayMs = 2000 * Math.pow(2, reconnectAttempt)
+    reconnectTimerRef.current = setTimeout(() => {
+      setStreamError(false)
+      setStreamKey((k) => k + 1)
+      setReconnectAttempt((n) => n + 1)
+    }, delayMs)
+    return () => {
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
+    }
+  }, [streamError, reconnectAttempt, config.enabled, config.cameraStreamUrlMjpeg])
+
+  function manualReconnect() {
+    if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
+    setStreamError(false)
+    setReconnectAttempt(0)
+    setStreamKey((k) => k + 1)
+  }
+
+  function toggleFullscreen() {
+    const el = previewRef.current
+    if (!el) return
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {})
+    } else {
+      el.requestFullscreen().catch(() => {})
+    }
+  }
 
   const sortedEvents = [...events].sort((a, b) => b.zeitstempel.localeCompare(a.zeitstempel))
   const todayEvents = events.filter((e) => e.zeitstempel.slice(0, 10) === TODAY_ISO)
@@ -144,6 +183,10 @@ export default function StallwachePage() {
   }
 
   function toggleSystem() {
+    if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
+    setStreamError(false)
+    setStreamKey((k) => k + 1)
+    setReconnectAttempt(0)
     setConfig({ ...config, enabled: !config.enabled })
     const newId = Math.max(0, ...events.map((e) => e.id)) + 1
     const event: StallwacheEvent = {
@@ -168,7 +211,7 @@ export default function StallwachePage() {
             Stallwache
           </h1>
           <p className="text-stone-500 mt-0.5 text-sm">
-            KI-Kalbungswache · YOLOv8 + HTTP-Stream + Telegram-Alerts
+            KI-Kalbungswache · YOLOv8 + RTSP via go2rtc + Telegram-Alerts
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -344,36 +387,100 @@ export default function StallwachePage() {
                 <Camera className="w-4 h-4 text-stone-500" />
                 <h2 className="font-semibold text-stone-900">Kamera-Vorschau</h2>
               </div>
-              <span className="text-xs text-stone-400">{config.cameraName}</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-stone-400 mr-1">{config.cameraName}</span>
+                {config.enabled && config.cameraStreamUrlMjpeg && (
+                  <>
+                    <button
+                      onClick={manualReconnect}
+                      className="p-1.5 rounded hover:bg-stone-100 text-stone-400 hover:text-stone-700 transition-colors"
+                      title="Stream neu verbinden"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={toggleFullscreen}
+                      className="p-1.5 rounded hover:bg-stone-100 text-stone-400 hover:text-stone-700 transition-colors"
+                      title="Vollbild"
+                    >
+                      <Maximize2 className="w-3.5 h-3.5" />
+                    </button>
+                    <a
+                      href={config.cameraStreamUrlMjpeg}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-1.5 rounded hover:bg-stone-100 text-stone-400 hover:text-stone-700 transition-colors"
+                      title="In neuem Tab öffnen"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  </>
+                )}
+              </div>
             </div>
-            <div className="aspect-video bg-stone-950 relative flex items-center justify-center text-stone-400">
+            <div ref={previewRef} className="aspect-video bg-stone-950 relative flex items-center justify-center text-stone-400">
               {config.enabled ? (
                 <>
-                  <div className="absolute top-3 left-3 flex items-center gap-2 bg-red-600/90 text-white px-2 py-1 rounded text-xs font-semibold">
+                  <div className="absolute top-3 left-3 flex items-center gap-2 bg-red-600/90 text-white px-2 py-1 rounded text-xs font-semibold z-10">
                     <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
                     LIVE
                   </div>
-                  <div className="absolute top-3 right-3 bg-black/60 text-white px-2 py-1 rounded text-xs font-mono">
+                  <div className="absolute top-3 right-3 bg-black/60 text-white px-2 py-1 rounded text-xs font-mono z-10">
                     {status.fps.toFixed(1)} FPS · 1280×720
                   </div>
-                  <div className="text-center">
-                    <Camera className="w-12 h-12 mx-auto mb-2 opacity-40" />
-                    <p className="text-sm opacity-70">HTTP-Stream</p>
-                    <p className="text-xs opacity-50 font-mono mt-1 break-all px-4">
-                      {config.cameraStreamUrl.replace(/user=[^&]+&pwd=[^&]+/, 'user=****&pwd=****')}
-                    </p>
-                    <p className="text-xs opacity-50 mt-3">
-                      (Bild-Stream verfügbar wenn Python-Backend per HTTP-Bridge angebunden ist)
-                    </p>
-                  </div>
-                  {/* Demo-Detection-Box */}
-                  <div className="absolute inset-0 pointer-events-none">
-                    <div className="absolute top-[35%] left-[40%] w-[25%] h-[35%] border-2 border-green-400 rounded">
-                      <div className="absolute -top-6 left-0 bg-green-500 text-white text-[10px] px-1.5 py-0.5 rounded font-mono">
-                        cow · 0.91
+
+                  {config.cameraStreamUrlMjpeg && !streamError ? (
+                    <>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        key={streamKey}
+                        src={config.cameraStreamUrlMjpeg}
+                        alt={config.cameraName}
+                        className="absolute inset-0 w-full h-full object-contain"
+                        onError={() => setStreamError(true)}
+                        onLoad={() => setReconnectAttempt(0)}
+                      />
+                      <div className="absolute bottom-3 left-3 bg-black/50 text-white text-[10px] px-2 py-1 rounded font-mono z-10">
+                        MJPEG · go2rtc-Bridge
                       </div>
+                    </>
+                  ) : (
+                    <div className="text-center px-6">
+                      {streamError ? (
+                        <>
+                          <Camera className="w-12 h-12 mx-auto mb-2 text-red-400 opacity-80" />
+                          <p className="text-sm text-red-400">Stream nicht erreichbar</p>
+                          <p className="text-xs opacity-50 font-mono mt-1 break-all">
+                            {config.cameraStreamUrlMjpeg}
+                          </p>
+                          {reconnectAttempt < 5 ? (
+                            <p className="text-xs text-amber-400 mt-2 flex items-center justify-center gap-1.5">
+                              <RefreshCw className="w-3 h-3 animate-spin" />
+                              Erneuter Versuch ({reconnectAttempt + 1}/5) …
+                            </p>
+                          ) : (
+                            <p className="text-xs opacity-40 mt-2">
+                              Läuft go2rtc? Ist der RTSP-Stream erreichbar? Seite über HTTP laden (kein HTTPS → Mixed Content).
+                            </p>
+                          )}
+                          <button
+                            onClick={manualReconnect}
+                            className="mt-3 text-xs text-white/70 hover:text-white border border-white/20 hover:border-white/40 px-3 py-1.5 rounded transition-colors"
+                          >
+                            Jetzt neu verbinden
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <Camera className="w-12 h-12 mx-auto mb-2 opacity-40" />
+                          <p className="text-sm opacity-70">Kein Stream konfiguriert</p>
+                          <p className="text-xs opacity-50 mt-2">
+                            go2rtc einrichten und MJPEG-URL im Tab Konfiguration eintragen
+                          </p>
+                        </>
+                      )}
                     </div>
-                  </div>
+                  )}
                 </>
               ) : (
                 <div className="text-center">
@@ -547,9 +654,12 @@ export default function StallwachePage() {
         <div className="space-y-6">
           {/* Kamera */}
           <div className="bg-white rounded-xl border border-stone-200 p-6">
-            <h2 className="font-semibold text-stone-900 mb-4 flex items-center gap-2">
-              <Camera className="w-4 h-4 text-stone-500" /> Kamera (HTTP-Stream)
+            <h2 className="font-semibold text-stone-900 mb-1 flex items-center gap-2">
+              <Camera className="w-4 h-4 text-stone-500" /> Kamera (LSC Smart Indoor · RTSP via go2rtc)
             </h2>
+            <p className="text-xs text-stone-400 mb-4">
+              LAN-IP: 192.168.178.104 · MAC: 8C:5C:53:A6:94:FB · Device-ID: bfd872a00d4e8fc02bkiua
+            </p>
             <div className="grid md:grid-cols-2 gap-4">
               <div>
                 <Label>Name der Kamera</Label>
@@ -560,37 +670,59 @@ export default function StallwachePage() {
                 />
               </div>
               <div>
-                <Label>Kamera-Passwort</Label>
+                <Label>Lokale IP der Kamera</Label>
                 <Input
-                  type="password"
                   className="mt-1 font-mono text-sm"
-                  value={config.cameraUser}
-                  onChange={(e) => setConfig({ ...config, cameraUser: e.target.value })}
-                  placeholder="Stallwache123!"
+                  value={config.cameraIp}
+                  onChange={(e) => setConfig({ ...config, cameraIp: e.target.value })}
+                  placeholder="192.168.178.104"
                 />
               </div>
               <div className="md:col-span-2">
-                <Label>Stream-URL (primär · ASF lokal)</Label>
+                <Label>RTSP-URL (für Python-Backend & go2rtc)</Label>
                 <Input
                   className="mt-1 font-mono text-sm"
                   value={config.cameraStreamUrl}
                   onChange={(e) => setConfig({ ...config, cameraStreamUrl: e.target.value })}
-                  placeholder="http://192.168.178.108/videostream.asf?user=...&pwd=...&resolution=1280x720"
+                  placeholder="rtsp://192.168.178.104:554/"
                 />
                 <p className="text-xs text-stone-400 mt-1">
-                  Rollei SafetyCam HD 20 · HTTP ASF-Stream (kein RTSP). Lokal bevorzugt.
+                  Standard-RTSP-Port 554. Falls die Kamera einen anderen Port oder Pfad nutzt (z.B. <code>/stream1</code>), hier anpassen.
+                  Testen mit VLC → Medien → Netzwerkstream öffnen.
                 </p>
               </div>
               <div className="md:col-span-2">
-                <Label>MJPEG-URL (Fallback · CGI)</Label>
+                <Label>go2rtc MJPEG-URL (Browser-Vorschau)</Label>
                 <Input
                   className="mt-1 font-mono text-sm"
                   value={config.cameraStreamUrlMjpeg}
                   onChange={(e) => setConfig({ ...config, cameraStreamUrlMjpeg: e.target.value })}
-                  placeholder="http://192.168.178.108/videostream.cgi?user=...&pwd=...&resolution=8"
+                  placeholder="http://192.168.178.50:1984/api/stream.mjpeg?src=stall_kamera"
                 />
                 <p className="text-xs text-stone-400 mt-1">
-                  Wird verwendet wenn der ASF-Stream nicht erreichbar ist.
+                  go2rtc wandelt den RTSP-Stream in MJPEG um, den der Browser direkt laden kann.
+                  Format: <code className="bg-stone-100 px-1 rounded">http://&lt;go2rtc-host&gt;:1984/api/stream.mjpeg?src=&lt;stream-name&gt;</code>
+                </p>
+              </div>
+              <div>
+                <Label>go2rtc Base-URL</Label>
+                <Input
+                  className="mt-1 font-mono text-sm"
+                  value={config.go2rtcUrl}
+                  onChange={(e) => setConfig({ ...config, go2rtcUrl: e.target.value })}
+                  placeholder="http://192.168.178.50:1984"
+                />
+              </div>
+              <div>
+                <Label>go2rtc Stream-Name</Label>
+                <Input
+                  className="mt-1 font-mono text-sm"
+                  value={config.go2rtcStreamName}
+                  onChange={(e) => setConfig({ ...config, go2rtcStreamName: e.target.value })}
+                  placeholder="stall_kamera"
+                />
+                <p className="text-xs text-stone-400 mt-1">
+                  Entspricht dem Schlüssel in <code>go2rtc.yaml</code> unter <code>streams:</code>
                 </p>
               </div>
               <div className="md:col-span-2">
@@ -599,13 +731,10 @@ export default function StallwachePage() {
                   className="mt-1 font-mono text-sm"
                   value={config.cameraStreamUrlDdns}
                   onChange={(e) => setConfig({ ...config, cameraStreamUrlDdns: e.target.value })}
-                  placeholder="leer lassen wenn Backend im LAN läuft"
+                  placeholder="leer lassen wenn go2rtc im LAN läuft"
                 />
                 <p className="text-xs text-stone-400 mt-1">
-                  Nur ausfüllen wenn das Python-Backend nicht im selben Netzwerk wie die Kamera läuft –
-                  z.B. via VPN (Tailscale/WireGuard) oder Port-Forwarding über eine eigene DDNS
-                  (duckdns.org, no-ip.com). Die Rollei-Cloud (rolleicam.net / megracloud.net) eignet
-                  sich nicht – sie ist ein Auth-Relay nur für den Browser-Viewer.
+                  Nur nötig wenn go2rtc von außen erreichbar ist (VPN / Port-Forward).
                 </p>
               </div>
             </div>
@@ -775,83 +904,150 @@ export default function StallwachePage() {
       {/* TAB: Setup */}
       {tab === 'setup' && (
         <div className="space-y-6">
+
+          {/* Schritt 1: RTSP testen */}
           <div className="bg-white rounded-xl border border-stone-200 p-6 space-y-4">
             <h2 className="font-semibold text-stone-900 flex items-center gap-2">
-              <Cpu className="w-4 h-4 text-stone-500" /> Python-Backend einrichten
+              <Camera className="w-4 h-4 text-stone-500" /> Schritt 1 – RTSP testen
             </h2>
             <p className="text-sm text-stone-600">
-              Das Backend läuft typischerweise auf einem Raspberry Pi 4/5, einem Mini-PC oder direkt
-              am Hof-Server. Es liest den HTTP-Stream der Rollei SafetyCam HD 20, führt die YOLOv8n-Inferenz aus und
-              schickt bei Kalbungs-Verdacht Telegram-Alerts.
+              Die LSC Smart Connect Indoor IP Camera (Tuya-basiert) kann je nach Firmware-Version einen
+              RTSP-Stream bereitstellen. Zuerst prüfen ob Port 554 erreichbar ist:
             </p>
-
             <div className="space-y-3 text-sm">
               <div className="rounded-lg border border-stone-200 p-4">
-                <p className="font-semibold text-stone-900 mb-2">1. Repository klonen</p>
+                <p className="font-semibold text-stone-900 mb-2">Port-Check (Linux / Mac)</p>
                 <pre className="bg-stone-900 text-stone-100 rounded p-3 overflow-x-auto text-xs font-mono">
-                  git clone https://github.com/Pulse3000/stallwache-skill.git{'\n'}
-                  cd stallwache-skill
-                </pre>
-              </div>
-
-              <div className="rounded-lg border border-stone-200 p-4">
-                <p className="font-semibold text-stone-900 mb-2">2. Konfiguration kopieren</p>
-                <pre className="bg-stone-900 text-stone-100 rounded p-3 overflow-x-auto text-xs font-mono">
-                  cp .env.example .env{'\n'}
-                  # CAMERA_STREAM_URL, TELEGRAM_BOT_TOKEN und{'\n'}
-                  # TELEGRAM_CHAT_ID anpassen
-                </pre>
-              </div>
-
-              <div className="rounded-lg border border-stone-200 p-4">
-                <p className="font-semibold text-stone-900 mb-2">3. Container starten</p>
-                <pre className="bg-stone-900 text-stone-100 rounded p-3 overflow-x-auto text-xs font-mono">
-                  docker compose up -d{'\n'}
-                  docker compose logs -f
+                  nc -zv 192.168.178.104 554
                 </pre>
                 <p className="text-xs text-stone-500 mt-2">
-                  Ohne Docker: <code className="font-mono">pip install -r requirements.txt &amp;&amp; python main.py</code>
+                  „Connection refused" → RTSP ist deaktiviert oder nicht verfügbar.
+                  „succeeded" → weiter mit Schritt 2.
+                </p>
+              </div>
+              <div className="rounded-lg border border-stone-200 p-4">
+                <p className="font-semibold text-stone-900 mb-2">Stream mit VLC prüfen</p>
+                <pre className="bg-stone-900 text-stone-100 rounded p-3 overflow-x-auto text-xs font-mono">
+                  vlc rtsp://192.168.178.104:554/{'\n'}
+                  # Falls kein Bild: weitere Pfade probieren{'\n'}
+                  vlc rtsp://192.168.178.104:554/stream1{'\n'}
+                  vlc rtsp://192.168.178.104:554/onvif1{'\n'}
+                  vlc rtsp://192.168.178.104:554/live
+                </pre>
+              </div>
+              <div className="rounded-lg border border-amber-100 bg-amber-50 p-4">
+                <p className="font-semibold text-amber-900 mb-1">Kein RTSP verfügbar?</p>
+                <p className="text-xs text-amber-800">
+                  Manche LSC-Modelle unterstützen RTSP nur mit spezieller Firmware oder gar nicht.
+                  In der Smart Life App unter Kamera-Einstellungen nach „Lokaler Stream" / „RTSP" suchen.
+                  Alternativ: Tuya Cloud + go2rtc als Stream-Quelle verwenden (kontaktiere uns für Hilfe).
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Schritt 2: go2rtc */}
+          <div className="bg-white rounded-xl border border-stone-200 p-6 space-y-4">
+            <h2 className="font-semibold text-stone-900 flex items-center gap-2">
+              <Cpu className="w-4 h-4 text-stone-500" /> Schritt 2 – go2rtc als Browser-Bridge einrichten
+            </h2>
+            <p className="text-sm text-stone-600">
+              Browser können RTSP nicht direkt laden. <strong>go2rtc</strong> ist eine winzige
+              Standalone-Binärdatei (~8 MB, kein Docker nötig), die RTSP in MJPEG / WebRTC / HLS
+              umwandelt – damit ist der Stream direkt im Browser sichtbar.
+            </p>
+            <div className="space-y-3 text-sm">
+              <div className="rounded-lg border border-stone-200 p-4">
+                <p className="font-semibold text-stone-900 mb-2">go2rtc herunterladen (Raspberry Pi / ARM64)</p>
+                <pre className="bg-stone-900 text-stone-100 rounded p-3 overflow-x-auto text-xs font-mono">
+                  curl -L https://github.com/AlexxIT/go2rtc/releases/latest/download/go2rtc_linux_arm64 \{'\n'}
+                    -o go2rtc && chmod +x go2rtc
+                </pre>
+                <p className="text-xs text-stone-500 mt-2">
+                  Für x86/amd64 (Mini-PC): <code>go2rtc_linux_amd64</code> · Windows: <code>go2rtc_win64.zip</code>
                 </p>
               </div>
 
               <div className="rounded-lg border border-stone-200 p-4">
-                <p className="font-semibold text-stone-900 mb-2">4. Dashboard verbinden</p>
+                <p className="font-semibold text-stone-900 mb-2">go2rtc.yaml erstellen</p>
+                <pre className="bg-stone-900 text-stone-100 rounded p-3 overflow-x-auto text-xs font-mono leading-relaxed">
+                  {`api:
+  listen: :1984   # Web-UI + API-Port
+
+streams:
+  stall_kamera:
+    - rtsp://192.168.178.104:554/
+    # Falls der Pfad anders lautet:
+    # - rtsp://192.168.178.104:554/stream1`}
+                </pre>
+              </div>
+
+              <div className="rounded-lg border border-stone-200 p-4">
+                <p className="font-semibold text-stone-900 mb-2">go2rtc starten</p>
+                <pre className="bg-stone-900 text-stone-100 rounded p-3 overflow-x-auto text-xs font-mono">
+                  ./go2rtc -config go2rtc.yaml
+                </pre>
+                <p className="text-xs text-stone-500 mt-2">
+                  Als Systemdienst: <code>sudo ./go2rtc -config go2rtc.yaml install</code> (läuft dann automatisch nach Neustart).
+                </p>
+              </div>
+
+              <div className="rounded-lg border border-stone-200 p-4">
+                <p className="font-semibold text-stone-900 mb-2">Stream im Browser testen</p>
+                <pre className="bg-stone-900 text-stone-100 rounded p-3 overflow-x-auto text-xs font-mono">
+                  {`# go2rtc Web-UI öffnen:\nhttp://192.168.178.50:1984/`}{'\n\n'}
+                  {`# Direkter MJPEG-Link (für dieses Dashboard):\nhttp://192.168.178.50:1984/api/stream.mjpeg?src=stall_kamera`}
+                </pre>
+                <p className="text-xs text-stone-500 mt-2">
+                  <strong>192.168.178.50</strong> durch die IP des Geräts ersetzen, auf dem go2rtc läuft.
+                  Die MJPEG-URL dann im Tab <strong>Konfiguration → go2rtc MJPEG-URL</strong> eintragen.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Schritt 3: Python-Backend */}
+          <div className="bg-white rounded-xl border border-stone-200 p-6 space-y-4">
+            <h2 className="font-semibold text-stone-900 flex items-center gap-2">
+              <Cpu className="w-4 h-4 text-stone-500" /> Schritt 3 – Python-Backend (YOLOv8 KI)
+            </h2>
+            <p className="text-sm text-stone-600">
+              Das Backend liest den RTSP-Stream direkt (oder via go2rtc), führt YOLOv8n-Inferenz aus
+              und schickt Telegram-Alerts bei Kalbungs-Verdacht. go2rtc und Backend laufen unabhängig.
+            </p>
+            <div className="space-y-3 text-sm">
+              <div className="rounded-lg border border-stone-200 p-4">
+                <p className="font-semibold text-stone-900 mb-2">Repository klonen & starten</p>
+                <pre className="bg-stone-900 text-stone-100 rounded p-3 overflow-x-auto text-xs font-mono">
+                  git clone https://github.com/Pulse3000/stallwache-skill.git{'\n'}
+                  cd stallwache-skill{'\n'}
+                  cp .env.example .env{'\n'}
+                  # .env anpassen:{'\n'}
+                  # CAMERA_STREAM_URL=rtsp://192.168.178.104:554/{'\n'}
+                  # TELEGRAM_BOT_TOKEN=...{'\n'}
+                  # TELEGRAM_CHAT_ID=...{'\n'}
+                  docker compose up -d
+                </pre>
+              </div>
+              <div className="rounded-lg border border-stone-200 p-4">
+                <p className="font-semibold text-stone-900 mb-2">Dashboard-Verbindung</p>
                 <p className="text-sm text-stone-600">
-                  Im Reiter <strong>Konfiguration</strong> oben unter „Backend-Verbindung" die
-                  IP-Adresse + Port des Backends eintragen (Standard:{' '}
-                  <code className="font-mono text-xs bg-stone-100 px-1.5 py-0.5 rounded">
-                    http://&lt;ip&gt;:8080
-                  </code>
-                  ). Das Backend muss dafür die optionale HTTP-API exportieren
-                  (<code className="font-mono text-xs">FEATURE_WEB_DASHBOARD=true</code> in der .env).
+                  Im Tab <strong>Konfiguration → Backend-Verbindung</strong> die IP + Port eintragen.
+                  Standard: <code className="font-mono text-xs bg-stone-100 px-1.5 py-0.5 rounded">http://192.168.178.50:8080</code>.
+                  Das Backend benötigt <code className="font-mono text-xs">FEATURE_WEB_DASHBOARD=true</code> in der .env.
                 </p>
               </div>
             </div>
           </div>
 
           <div className="bg-white rounded-xl border border-stone-200 p-6">
-            <h2 className="font-semibold text-stone-900 mb-3">Wo läuft das Backend?</h2>
-            <p className="text-sm text-stone-600 mb-3">
-              Die Rollei SafetyCam HD 20 liefert ihren Stream nur lokal auf <code className="font-mono text-xs bg-stone-100 px-1 rounded">192.168.178.108</code>.
-              Die Rollei-Cloud (<code className="font-mono text-xs bg-stone-100 px-1 rounded">rolleicam.net</code> /
-              <code className="font-mono text-xs bg-stone-100 px-1 rounded">megracloud.net</code>) funktioniert nur im Browser
-              und kann nicht als Stream-Quelle für OpenCV/ffmpeg verwendet werden.
-            </p>
-            <ul className="text-sm text-stone-600 space-y-2 list-disc pl-5">
-              <li><strong>Empfohlen:</strong> Mini-PC oder Raspberry Pi direkt am Hof, im selben Netzwerk wie die Kamera. Nutzt die LAN-Stream-URL.</li>
-              <li><strong>Backend extern + VPN:</strong> Tailscale oder WireGuard auf dem Backend-Host – die Kamera ist dann erreichbar als wäre sie lokal.</li>
-              <li><strong>Port-Forwarding:</strong> Router → Port 80 weiterleiten zu <code className="font-mono text-xs bg-stone-100 px-1 rounded">192.168.178.108</code> und eine eigene DDNS (duckdns.org/no-ip) verwenden. <em>Achtung: Kennwort über HTTP exponiert.</em></li>
-            </ul>
-          </div>
-
-          <div className="bg-white rounded-xl border border-stone-200 p-6">
             <h2 className="font-semibold text-stone-900 mb-3">Empfohlene Hardware</h2>
             <ul className="text-sm text-stone-600 space-y-1.5 list-disc pl-5">
-              <li>Raspberry Pi 4 / 5 (mind. 4 GB RAM) oder Mini-PC mit x86/ARM</li>
+              <li>Raspberry Pi 4 / 5 (mind. 4 GB RAM) oder Mini-PC – läuft go2rtc + Python-Backend</li>
               <li>Optional: NVIDIA-GPU für höhere FPS (CUDA aktivieren in Konfiguration)</li>
-              <li>Rollei SafetyCam HD 20 (HTTP ASF/CGI-Stream) oder andere IP-Kamera mit HTTP-Stream</li>
-              <li>Stabile Netzwerkverbindung im Stall (LAN bevorzugt, sonst WLAN mit gutem Signal)</li>
-              <li>Telegram-Bot via @BotFather erstellt, eigene Chat-ID via @userinfobot</li>
+              <li>LSC Smart Connect Indoor IP Camera · LAN-IP: 192.168.178.104</li>
+              <li>Stabile LAN-Verbindung im Stall (WLAN möglich, aber LAN-Kabel bevorzugt)</li>
+              <li>Telegram-Bot via @BotFather erstellt, Chat-ID via @userinfobot</li>
             </ul>
           </div>
 
