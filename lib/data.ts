@@ -241,24 +241,18 @@ export const initialWeiden: Weide[] = [
 
 // ---------- Stallwache (KI-Kalbungswache) ----------
 // Web-Dashboard für das stallwache-skill Python-Backend
-// (YOLOv8 + RTSP-Kamera via go2rtc + Telegram-Alerts)
-// Kamera: LSC Smart Connect Indoor IP Camera (Tuya-basiert)
-//   LAN-IP: 192.168.178.104  |  MAC: 8C:5C:53:A6:94:FB
-//   Device-ID: bfd872a00d4e8fc02bkiua
-// go2rtc als RTSP→Browser-Bridge (MJPEG / WebRTC / HLS)
+// (YOLOv8 + HTTP-Stream-Kamera + Telegram-Alerts)
+// Kamera: Rollei SafetyCam HD 20 – HTTP ASF/CGI-Stream (kein RTSP)
 // https://github.com/Pulse3000/stallwache-skill
 
 export type StallwacheConfig = {
   enabled: boolean
   apiUrl: string // z.B. http://192.168.178.50:8080
   cameraName: string
-  cameraIp: string           // lokale IP der Kamera
-  cameraStreamUrl: string    // RTSP-URL für Python-Backend / go2rtc
-  cameraStreamUrlMjpeg: string // go2rtc MJPEG-Endpunkt für Browser-Vorschau
-  cameraStreamUrlDdns: string  // externer Zugang (optional)
+  cameraStreamUrl: string   // primärer HTTP-Stream (ASF)
+  cameraStreamUrlMjpeg: string // MJPEG-Fallback (CGI)
+  cameraStreamUrlDdns: string  // externer Zugang via DDNS
   cameraUser: string
-  go2rtcUrl: string          // go2rtc Base-URL, z.B. http://192.168.178.50:1984
-  go2rtcStreamName: string   // Name des Streams in go2rtc.yaml
   modelPath: string
   confidenceThreshold: number // 0..1
   iouThreshold: number // 0..1
@@ -275,14 +269,10 @@ export const defaultStallwacheConfig: StallwacheConfig = {
   enabled: false,
   apiUrl: 'http://192.168.178.50:8080',
   cameraName: 'Abkalbestall Süd',
-  cameraIp: '192.168.178.104',
-  cameraStreamUrl: 'rtsp://192.168.178.104:554/',
-  // go2rtc MJPEG-Endpunkt: go2rtc muss laufen und den Stream kennen
-  cameraStreamUrlMjpeg: 'http://192.168.178.50:1984/api/stream.mjpeg?src=stall_kamera',
+  cameraStreamUrl: 'http://192.168.178.108/videostream.asf?user=Stallwache123!&pwd=Stallwache123!&resolution=1280x720',
+  cameraStreamUrlMjpeg: 'http://192.168.178.108/videostream.cgi?user=Stallwache123!&pwd=Stallwache123!&resolution=8',
   cameraStreamUrlDdns: '',
-  cameraUser: '',
-  go2rtcUrl: 'http://192.168.178.50:1984',
-  go2rtcStreamName: 'stall_kamera',
+  cameraUser: 'Stallwache123!',
   modelPath: './models/yolov8n.pt',
   confidenceThreshold: 0.3,
   iouThreshold: 0.45,
@@ -317,7 +307,7 @@ export const initialStallwacheEvents: StallwacheEvent[] = [
   { id: 1, zeitstempel: '2026-05-10T04:18:42', typ: 'Aktivität', konfidenz: 0.71, beschreibung: 'Erhöhte Bewegung in Abkalbebox – Kuh ist unruhig', kuhNr: 2, bestaetigt: false },
   { id: 2, zeitstempel: '2026-05-09T22:14:08', typ: 'Telegram-Alert', beschreibung: 'Alarm an Hans Schabel gesendet (Bewegungsmuster verdächtig)', kuhNr: 2, bestaetigt: true },
   { id: 3, zeitstempel: '2026-05-09T22:13:51', typ: 'Aktivität', konfidenz: 0.68, beschreibung: 'Wiederkehrende Bewegung Box 2, mehrere Aufstehphasen', kuhNr: 2, bestaetigt: true },
-  { id: 4, zeitstempel: '2026-05-09T06:02:00', typ: 'System gestartet', beschreibung: 'RTSP-Stream verbunden (go2rtc · 192.168.178.104:554), YOLOv8n geladen (Device: CPU)', bestaetigt: true },
+  { id: 4, zeitstempel: '2026-05-09T06:02:00', typ: 'System gestartet', beschreibung: 'HTTP-Stream verbunden (ASF lokal), YOLOv8n geladen (Device: CPU)', bestaetigt: true },
   { id: 5, zeitstempel: '2026-04-26T03:47:12', typ: 'Kalbung erkannt', konfidenz: 0.92, beschreibung: 'Kalbung erfolgreich erkannt – Kalb sichtbar auf Frame', kuhNr: 26, bestaetigt: true },
   { id: 6, zeitstempel: '2026-04-26T03:47:14', typ: 'Telegram-Alert', beschreibung: 'Alarm gesendet (Anna · 03:47 Uhr · 92 % Konfidenz)', kuhNr: 26, bestaetigt: true },
   { id: 7, zeitstempel: '2026-04-08T01:22:55', typ: 'Kalbung erkannt', konfidenz: 0.88, beschreibung: 'Kalbung erkannt – nachts in Box 1', kuhNr: 11, bestaetigt: true },
