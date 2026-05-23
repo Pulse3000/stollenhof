@@ -90,14 +90,60 @@ export default function StallwachePage() {
   const [streamError, setStreamError] = useState(false)
   const [streamKey, setStreamKey] = useState(0)
   const [reconnectAttempt, setReconnectAttempt] = useState(0)
+  // Tuya-Stream: URL und Ablaufzeitpunkt (aus /api/get-stream)
+  const [tuyaUrl, setTuyaUrl] = useState<string | null>(null)
+  const [tuyaLoading, setTuyaLoading] = useState(false)
+  const [tuyaError, setTuyaError] = useState<string | null>(null)
   const previewRef = useRef<HTMLDivElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsRef = useRef<Hls | null>(null)
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Tuya-Stream-URL von der API-Route holen
+  async function fetchTuyaStreamUrl() {
+    setTuyaLoading(true)
+    setTuyaError(null)
+    try {
+      const res = await fetch('/api/get-stream', { cache: 'no-store' })
+      const data: { url?: string; expiresAt?: number; error?: string } = await res.json()
+      if (!res.ok || !data.url) throw new Error(data.error ?? `HTTP ${res.status}`)
+      setTuyaUrl(data.url)
+      setStreamError(false)
+      setStreamKey((k) => k + 1)
+      // Auto-Refresh kurz vor Ablauf (expiresAt minus 2 Minuten Puffer)
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
+      const ttl = (data.expiresAt ?? Date.now() + 28 * 60 * 1000) - Date.now() - 2 * 60 * 1000
+      if (ttl > 0) {
+        refreshTimerRef.current = setTimeout(fetchTuyaStreamUrl, ttl)
+      }
+    } catch (err) {
+      setTuyaError(err instanceof Error ? err.message : 'Unbekannter Fehler')
+    } finally {
+      setTuyaLoading(false)
+    }
+  }
+
+  // Stream-URL laden wenn System gestartet wird
+  useEffect(() => {
+    if (!config.enabled) {
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
+      setTuyaUrl(null)
+      return
+    }
+    fetchTuyaStreamUrl()
+    return () => {
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config.enabled])
+
+  // HLS-Player anhängen – Quelle: tuyaUrl (API) oder config.cameraStreamUrlHls (Fallback)
+  const activeStreamUrl = tuyaUrl ?? config.cameraStreamUrlHls
 
   // HLS-Player anhängen (hls.js für Chrome/Firefox, natives HLS für Safari/iOS)
   useEffect(() => {
-    if (!config.enabled || !config.cameraStreamUrlHls) return
+    if (!config.enabled || !activeStreamUrl) return
     const video = videoRef.current
     if (!video) return
 
@@ -105,22 +151,17 @@ export default function StallwachePage() {
     let hls: Hls | null = null
 
     const attach = async () => {
-      // Safari/iOS: natives HLS via Apple HLS support
       if (video.canPlayType('application/vnd.apple.mpegurl')) {
-        video.src = config.cameraStreamUrlHls
+        video.src = activeStreamUrl
         video.play().catch(() => {})
         return
       }
-      // Chrome/Firefox/Edge: hls.js
       const HlsModule = (await import('hls.js')).default
       if (cancelled) return
-      if (!HlsModule.isSupported()) {
-        setStreamError(true)
-        return
-      }
+      if (!HlsModule.isSupported()) { setStreamError(true); return }
       hls = new HlsModule({ lowLatencyMode: true, liveSyncDuration: 2, maxLiveSyncPlaybackRate: 1.5 })
       hlsRef.current = hls
-      hls.loadSource(config.cameraStreamUrlHls)
+      hls.loadSource(activeStreamUrl)
       hls.attachMedia(video)
       hls.on(HlsModule.Events.MANIFEST_PARSED, () => {
         video.play().catch(() => {})
@@ -134,35 +175,31 @@ export default function StallwachePage() {
 
     return () => {
       cancelled = true
-      if (hls) {
-        hls.destroy()
-        hlsRef.current = null
-      }
+      if (hls) { hls.destroy(); hlsRef.current = null }
       video.removeAttribute('src')
       video.load()
     }
-  }, [config.enabled, config.cameraStreamUrlHls, streamKey])
+  }, [config.enabled, activeStreamUrl, streamKey])
 
-  // Auto-reconnect mit Exponential Backoff: 2s, 4s, 8s, 16s, 32s, dann aufgeben
+  // Auto-reconnect (Exponential Backoff): nach hls.js-Fehler neue URL holen (Token könnte abgelaufen sein)
   useEffect(() => {
-    if (!streamError || !config.enabled || !config.cameraStreamUrlHls) return
+    if (!streamError || !config.enabled || !activeStreamUrl) return
     if (reconnectAttempt >= 5) return
     const delayMs = 2000 * Math.pow(2, reconnectAttempt)
     reconnectTimerRef.current = setTimeout(() => {
-      setStreamError(false)
-      setStreamKey((k) => k + 1)
+      // Neue Tuya-URL anfordern statt dieselbe nochmal zu versuchen
+      fetchTuyaStreamUrl()
       setReconnectAttempt((n) => n + 1)
     }, delayMs)
-    return () => {
-      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
-    }
-  }, [streamError, reconnectAttempt, config.enabled, config.cameraStreamUrlHls])
+    return () => { if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [streamError, reconnectAttempt, config.enabled, activeStreamUrl])
 
   function manualReconnect() {
     if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
     setStreamError(false)
     setReconnectAttempt(0)
-    setStreamKey((k) => k + 1)
+    fetchTuyaStreamUrl()
   }
 
   function toggleFullscreen() {
@@ -450,7 +487,12 @@ export default function StallwachePage() {
                 )}
               </div>
               <div className="flex items-center gap-0.5">
-                {config.enabled && config.cameraStreamUrlHls && (
+                {tuyaLoading && (
+                  <span className="text-xs text-stone-500 flex items-center gap-1 mr-2">
+                    <RefreshCw className="w-3 h-3 animate-spin" /> Tuya…
+                  </span>
+                )}
+                {config.enabled && (activeStreamUrl || config.cameraStreamUrlHls) && (
                   <>
                     <button
                       onClick={manualReconnect}
@@ -487,7 +529,35 @@ export default function StallwachePage() {
             >
               {config.enabled ? (
                 <>
-                  {config.cameraStreamUrlHls && !streamError ? (
+                  {/* Tuya-URL wird geladen */}
+                  {tuyaLoading && !tuyaUrl && (
+                    <div className="text-center">
+                      <RefreshCw className="w-8 h-8 mx-auto mb-3 text-stone-600 animate-spin" />
+                      <p className="text-sm text-stone-500">Stream-URL wird von Tuya Cloud geladen…</p>
+                    </div>
+                  )}
+
+                  {/* Tuya API-Fehler */}
+                  {tuyaError && !tuyaUrl && (
+                    <div className="text-center px-6 max-w-sm">
+                      <AlertTriangle className="w-10 h-10 mx-auto mb-3 text-red-700/60" />
+                      <p className="text-sm font-medium text-stone-300 mb-1">Tuya API nicht erreichbar</p>
+                      <p className="text-xs text-stone-600 font-mono break-all mb-3">{tuyaError}</p>
+                      <p className="text-xs text-stone-600 mb-4">
+                        Credentials in <code className="text-stone-500">.env.local</code> prüfen
+                        und Server neu starten.
+                      </p>
+                      <button
+                        onClick={fetchTuyaStreamUrl}
+                        className="text-xs text-stone-300 hover:text-white border border-stone-700 hover:border-stone-500 px-4 py-2 rounded-lg transition-colors"
+                      >
+                        Erneut versuchen
+                      </button>
+                    </div>
+                  )}
+
+                  {/* HLS-Video */}
+                  {activeStreamUrl && !streamError && (
                     <>
                       <video
                         ref={videoRef}
@@ -501,47 +571,46 @@ export default function StallwachePage() {
                         Stream wird geladen oder Browser nicht unterstützt.
                       </video>
                       <div className="absolute bottom-3 right-3 bg-stone-900/70 text-stone-400 text-[10px] px-2 py-1 rounded font-mono pointer-events-none">
-                        HLS · go2rtc via Cloudflare
+                        {tuyaUrl ? 'HLS · Tuya Cloud CDN' : 'HLS · go2rtc via Cloudflare'}
                       </div>
                     </>
-                  ) : (
+                  )}
+
+                  {/* HLS-Fehler */}
+                  {activeStreamUrl && streamError && (
                     <div className="text-center px-6 max-w-sm">
-                      {streamError ? (
-                        <>
-                          <Camera className="w-10 h-10 mx-auto mb-3 text-stone-600" />
-                          <p className="text-sm font-medium text-stone-300 mb-1">Stream nicht erreichbar</p>
-                          <p className="text-xs text-stone-600 font-mono break-all mb-3">
-                            {config.cameraStreamUrlHls}
-                          </p>
-                          {reconnectAttempt < 5 ? (
-                            <p className="text-xs text-amber-500 flex items-center justify-center gap-1.5">
-                              <RefreshCw className="w-3 h-3 animate-spin" />
-                              Erneuter Versuch {reconnectAttempt + 1}/5…
-                            </p>
-                          ) : (
-                            <p className="text-xs text-stone-600">
-                              go2rtc laufen? Cloudflare Tunnel aktiv?
-                            </p>
-                          )}
-                          <button
-                            onClick={manualReconnect}
-                            className="mt-4 text-xs text-stone-300 hover:text-white border border-stone-700 hover:border-stone-500 px-4 py-2 rounded-lg transition-colors"
-                          >
-                            Neu verbinden
-                          </button>
-                        </>
+                      <Camera className="w-10 h-10 mx-auto mb-3 text-stone-600" />
+                      <p className="text-sm font-medium text-stone-300 mb-1">Stream unterbrochen</p>
+                      {reconnectAttempt < 5 ? (
+                        <p className="text-xs text-amber-500 flex items-center justify-center gap-1.5 mb-3">
+                          <RefreshCw className="w-3 h-3 animate-spin" />
+                          Neue URL wird geholt… ({reconnectAttempt + 1}/5)
+                        </p>
                       ) : (
-                        <>
-                          <Camera className="w-10 h-10 mx-auto mb-3 text-stone-700" />
-                          <p className="text-sm text-stone-500">Kein Stream konfiguriert</p>
-                          <button
-                            onClick={() => setTab('config')}
-                            className="mt-3 text-xs text-stone-400 hover:text-white underline"
-                          >
-                            HLS-URL eintragen →
-                          </button>
-                        </>
+                        <p className="text-xs text-stone-600 mb-3">
+                          Tuya Cloud erreichbar? ONVIF aktiviert?
+                        </p>
                       )}
+                      <button
+                        onClick={manualReconnect}
+                        className="text-xs text-stone-300 hover:text-white border border-stone-700 hover:border-stone-500 px-4 py-2 rounded-lg transition-colors"
+                      >
+                        Neu verbinden
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Noch keine URL und kein Fehler */}
+                  {!tuyaLoading && !tuyaError && !activeStreamUrl && (
+                    <div className="text-center">
+                      <Camera className="w-10 h-10 mx-auto mb-3 text-stone-700" />
+                      <p className="text-sm text-stone-500">Kein Stream konfiguriert</p>
+                      <button
+                        onClick={() => setTab('config')}
+                        className="mt-3 text-xs text-stone-400 hover:text-white underline"
+                      >
+                        HLS-Fallback-URL eintragen →
+                      </button>
                     </div>
                   )}
                 </>
