@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="de" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tuya & LSC WebRTC Livestream Integration Hub</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Hls.js for HLS Player testing -->
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f5f3ff',
+                            100: '#edd8ff',
+                            500: '#8b5cf6',
+                            600: '#7c3aed',
+                            700: '#6d28d9',
+                            900: '#4c1d95',
+                        },
+                        tuya: '#ff5000'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #1e293b;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 3px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #64748b;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 font-sans antialiased min-h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="bg-gradient-to-tr from-brand-600 to-tuya p-2 rounded-lg shadow-lg">
+                    <i class="fa-solid fa-video text-white text-lg"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold tracking-tight text-white flex items-center gap-2">
+                        Tuya/LSC Integration Hub
+                        <span class="text-xs bg-brand-500/20 text-brand-400 px-2 py-0.5 rounded-full font-mono border border-brand-500/30">WebRTC / RTSP / HLS</span>
+                    </h1>
+                    <p class="text-xs text-slate-400">Entwickler-Schnittstelle & Testumgebung für LSC Indoor IP Cameras</p>
+                </div>
+            </div>
+            <div class="flex items-center space-x-4">
+                <a href="https://iot.tuya.com" target="_blank" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-md border border-slate-700 transition flex items-center gap-1.5">
+                    <i class="fa-solid fa-external-link text-xs"></i> Tuya Developer Platform
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Info Banner -->
+        <div class="mb-8 p-4 bg-gradient-to-r from-slate-900 to-brand-950/40 rounded-xl border border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div class="flex items-start gap-3">
+                <div class="bg-blue-500/10 text-blue-400 p-2 rounded-lg mt-0.5">
+                    <i class="fa-solid fa-circle-info text-lg"></i>
+                </div>
+                <div>
+                    <h3 class="font-semibold text-slate-200">LSC Smart Connect ist Tuya-kompatibel</h3>
+                    <p class="text-sm text-slate-400 mt-0.5">
+                        Die Kameras von Action (LSC) basieren vollständig auf der Tuya-Plattform. Sie können diese Geräte direkt im Tuya IoT-Portal registrieren und steuern. Dieses Hub hilft Ihnen, die Endpunkte aus Ihren hochgeladenen Dokumenten zu implementieren.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab Navigation -->
+        <div class="flex border-b border-slate-800 mb-6 overflow-x-auto custom-scrollbar">
+            <button onclick="switchTab('tab-architecture')" id="btn-tab-architecture" class="tab-btn px-4 py-2.5 font-medium text-sm border-b-2 border-brand-500 text-brand-400 flex items-center gap-2 whitespace-nowrap">
+                <i class="fa-solid fa-network-wired"></i> 1. Architektur & Ablauf
+            </button>
+            <button onclick="switchTab('tab-generator')" id="btn-tab-generator" class="tab-btn px-4 py-2.5 font-medium text-sm border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center gap-2 whitespace-nowrap">
+                <i class="fa-solid fa-code"></i> 2. Tuya API Code Generator
+            </button>
+            <button onclick="switchTab('tab-simulator')" id="btn-tab-simulator" class="tab-btn px-4 py-2.5 font-medium text-sm border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center gap-2 whitespace-nowrap">
+                <i class="fa-solid fa-wave-square"></i> 3. WebRTC Signalisierung
+            </button>
+            <button onclick="switchTab('tab-player')" id="btn-tab-player" class="tab-btn px-4 py-2.5 font-medium text-sm border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center gap-2 whitespace-nowrap">
+                <i class="fa-solid fa-play"></i> 4. Live Stream Player (HLS)
+            </button>
+        </div>
+
+        <!-- TAB CONTENT: ARCHITECTURE -->
+        <div id="tab-architecture" class="tab-content block space-y-8">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <!-- Left Details -->
+                <div class="lg:col-span-2 space-y-6">
+                    <div class="bg-slate-900 border border-slate-800 rounded-xl p-6">
+                        <h2 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                            <span class="w-2 h-2 bg-green-500 rounded-full animate-ping"></span>
+                            Wie funktioniert die Live-Stream-Architektur?
+                        </h2>
+
+                        <p class="text-slate-300 text-sm leading-relaxed mb-4">
+                            Die Tuya IoT-Plattform ermöglicht es Ihren Kameras, Ströme auf verschiedene Arten zu verteilen. Während <strong>RTSP</strong> und <strong>HLS</strong> über Relayservers laufen (die Bandbreite verbrauchen und verzögert sind), ermöglicht <strong>WebRTC</strong> eine extrem latenzfreie Peer-to-Peer-Direktverbindung zwischen Kamera und Browser/App.
+                        </p>
+
+                        <!-- Visual Flow Chart -->
+                        <div class="bg-slate-950 p-4 rounded-lg border border-slate-800 space-y-4 my-6 font-mono text-xs">
+                            <div class="text-center text-brand-400 font-bold border-b border-slate-800 pb-2 mb-2">INTEGRATIONS-ABLAUF DER PROTOKOLLE</div>
+
+                            <div class="grid grid-cols-3 text-center gap-2">
+                                <div class="bg-slate-900 p-2 rounded border border-slate-800">
+                                    <div class="font-bold text-slate-300">1. Client / Browser</div>
+                                    <div class="text-slate-500 mt-1">Sucht Verbindung</div>
+                                </div>
+                                <div class="bg-brand-950/40 p-2 rounded border border-brand-800">
+                                    <div class="font-bold text-brand-400">2. Tuya Cloud</div>
+                                    <div class="text-brand-300 mt-1">Signatur & Auth</div>
+                                </div>
+                                <div class="bg-slate-900 p-2 rounded border border-slate-800">
+                                    <div class="font-bold text-slate-300">3. Kamera (LSC)</div>
+                                    <div class="text-slate-500 mt-1">Stream-Quelle</div>
+                                </div>
+                            </div>
+
+                            <div class="space-y-2 mt-4 text-slate-300 pl-2 border-l-2 border-brand-500">
+                                <div><span class="text-brand-400">Möglichkeit A: WebRTC (Echtzeit, &lt;500ms)</span><br>
+                                Client fordert WebRTC-Config via API an ➔ Startet Signalisierung über MQTT ➔ Kamera & Client verhandeln P2P-Stream (STUN/TURN) ➔ Direkter verschlüsselter Stream.
+                                </div>
+                                <div class="mt-2"><span class="text-tuya">Möglichkeit B: RTSP / HLS (Einfach, 2s-10s)</span><br>
+                                API-Aufruf zu `/v1.0/devices/{id}/stream/actions/allocate` ➔ Tuya Cloud liefert Stream-URL ➔ Player lädt HLS-Manifest oder NVR greift per RTSP zu.
+                                </div>
+                            </div>
+                        </div>
+
+                        <h3 class="font-bold text-slate-200 mt-6 mb-2">Die 3 API-Endpunkte aus Ihren Dokumenten:</h3>
+                        <div class="space-y-3">
+                            <div class="p-3 bg-slate-950 rounded-lg border border-slate-800 flex justify-between items-start">
+                                <div>
+                                    <span class="text-xs font-mono px-2 py-0.5 bg-green-500/10 text-green-400 rounded border border-green-500/20 mr-2">GET</span>
+                                    <span class="text-sm font-mono text-slate-300">/v1.0/devices/{device_id}/webrtc-configs</span>
+                                    <p class="text-xs text-slate-400 mt-1">Holt die STUN/TURN Server, Credentials und P2P-Fähigkeiten für WebRTC.</p>
+                                </div>
+                            </div>
+                            <div class="p-3 bg-slate-950 rounded-lg border border-slate-800 flex justify-between items-start">
+                                <div>
+                                    <span class="text-xs font-mono px-2 py-0.5 bg-blue-500/10 text-blue-400 rounded border border-blue-500/20 mr-2">POST</span>
+                                    <span class="text-sm font-mono text-slate-300">/v1.0/devices/{device_id}/stream/actions/allocate</span>
+                                    <p class="text-xs text-slate-400 mt-1">Generiert direkte Stream-Adressen für RTSP oder HLS (wird nach Gerät zugewiesen).</p>
+                                </div>
+                            </div>
+                            <div class="p-3 bg-slate-950 rounded-lg border border-slate-800 flex justify-between items-start">
+                                <div>
+                                    <span class="text-xs font-mono px-2 py-0.5 bg-blue-500/10 text-blue-400 rounded border border-blue-500/20 mr-2">POST</span>
+                                    <span class="text-sm font-mono text-slate-300">/v1.0/users/{uid}/devices/{device_id}/stream/actions/allocate</span>
+                                    <p class="text-xs text-slate-400 mt-1">Gleiche Allokation, jedoch gebunden an die spezifische Benutzer-ID (UID).</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Side - Quick Links & Requirements -->
+                <div class="space-y-6">
+                    <div class="bg-slate-900 border border-slate-800 rounded-xl p-6">
+                        <h3 class="text-md font-bold text-white mb-4"><i class="fa-solid fa-list-check text-brand-400 mr-2"></i>Voraussetzungen</h3>
+                        <ul class="space-y-3 text-sm text-slate-300">
+                            <li class="flex items-start gap-2">
+                                <i class="fa-solid fa-check text-emerald-500 mt-1"></i>
+                                <span><strong>Kamera gekoppelt:</strong> Die LSC Kamera muss in der LSC-App oder direkt in der <strong>Tuya-App / Smart Life App</strong> angemeldet sein.</span>
+                            </li>
+                            <li class="flex items-start gap-2">
+                                <i class="fa-solid fa-check text-emerald-500 mt-1"></i>
+                                <span><strong>Tuya Cloud Account:</strong> Registrieren Sie sich auf <a href="https://iot.tuya.com" target="_blank" class="text-brand-400 underline">iot.tuya.com</a>.</span>
+                            </li>
+                            <li class="flex items-start gap-2">
+                                <i class="fa-solid fa-check text-emerald-500 mt-1"></i>
+                                <span><strong>Link Devices:</strong> Verknüpfen Sie Ihren LSC/SmartLife-Account mit dem Cloud-Projekt unter "Cloud ➔ Link Tuya App Account".</span>
+                            </li>
+                            <li class="flex items-start gap-2">
+                                <i class="fa-solid fa-check text-emerald-500 mt-1"></i>
+                                <span><strong>API-Service aktiviert:</strong> Das Service-Paket "IoT Video Live Stream" muss in Ihrem Tuya-Projekt aktiv sein.</span>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <div class="bg-slate-900 border border-slate-800 rounded-xl p-6">
+                        <h3 class="text-md font-bold text-white mb-3"><i class="fa-solid fa-bolt text-amber-400 mr-2"></i>Wichtig bei LSC Kameras</h3>
+                        <p class="text-xs text-slate-400 leading-relaxed">
+                            Einige LSC-Kameramodelle unterstützen standardmäßig kein lokales RTSP im Heimnetzwerk (Port 554 ist geschlossen). Durch die Integration der <strong>Tuya WebRTC / Cloud API</strong> umgehen Sie dieses Problem, da der Stream verschlüsselt über den Tuya-Tunnel nach außen gereicht und überall abrufbar gemacht wird!
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB CONTENT: GENERATOR -->
+        <div id="tab-generator" class="tab-content hidden space-y-6">
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-6">
+                <h2 class="text-lg font-bold text-white mb-2">Automatischer Tuya API Code-Generator</h2>
+                <p class="text-sm text-slate-400 mb-6">
+                    Die größte Hürde bei der Tuya-API ist die Signatur-Berechnung (`sign`). Tragen Sie hier Ihre Projektdaten ein (sie verbleiben lokal in Ihrem Browser), um einsatzbereiten Python- oder Node.js-Code zu generieren, mit dem Sie die URLs abrufen können.
+                </p>
+
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-400 uppercase mb-1">Access ID (Client ID)</label>
+                        <input type="text" id="gen-client-id" placeholder="z.B. rtc928jas811..." class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-brand-500 font-mono">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-400 uppercase mb-1">Access Secret</label>
+                        <input type="text" id="gen-secret" placeholder="z.B. 91hasd8912hjasda..." class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-brand-500 font-mono">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-400 uppercase mb-1">Device ID</label>
+                        <input type="text" id="gen-device-id" placeholder="z.B. 6c08578d894..." class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-brand-500 font-mono">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-400 uppercase mb-1">Region Endpoint</label>
+                        <select id="gen-region" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-brand-500">
+                            <option value="https://openapi.tuyaeu.com">Europa (https://openapi.tuyaeu.com)</option>
+                            <option value="https://openapi.tuyacn.com">China (https://openapi.tuyacn.com)</option>
+                            <option value="https://openapi.tuyaus.com">Amerika (https://openapi.tuyaus.com)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Code Tab Selectors -->
+                <div class="flex space-x-2 border-b border-slate-800 mb-4">
+                    <button onclick="switchLang('lang-python')" id="btn-lang-python" class="lang-btn px-4 py-2 text-xs font-mono border-b-2 border-brand-500 text-brand-400">python_script.py</button>
+                    <button onclick="switchLang('lang-node')" id="btn-lang-node" class="lang-btn px-4 py-2 text-xs font-mono border-b-2 border-transparent text-slate-400 hover:text-slate-200">node_script.js</button>
+                </div>
+
+                <!-- Code Display Area -->
+                <div class="relative">
+                    <button onclick="copyCode()" class="absolute top-3 right-3 bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 px-2.5 py-1.5 rounded border border-slate-700 flex items-center gap-1.5 transition">
+                        <i class="fa-regular fa-copy"></i> Code kopieren
+                    </button>
+
+                    <!-- PYTHON CODE -->
+                    <div id="code-python" class="lang-code block">
+                        <pre class="bg-slate-950 p-4 rounded-lg text-xs font-mono text-emerald-400 overflow-x-auto custom-scrollbar max-h-[450px] leading-relaxed"><code id="python-placeholder"># Python Code wird generiert...</code></pre>
+                    </div>
+
+                    <!-- NODE CODE -->
+                    <div id="code-node" class="lang-code hidden">
+                        <pre class="bg-slate-950 p-4 rounded-lg text-xs font-mono text-amber-400 overflow-x-auto custom-scrollbar max-h-[450px] leading-relaxed"><code id="node-placeholder">// Node.js Code wird generiert...</code></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB CONTENT: SIMULATOR -->
+        <div id="tab-simulator" class="tab-content hidden space-y-6">
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-6">
+                <h2 class="text-lg font-bold text-white mb-2">WebRTC Signaling Simulator (MQTT Brücke)</h2>
+                <p class="text-sm text-slate-400 mb-6">
+                    Bei Tuya baut der Client die Peer-to-Peer WebRTC Verbindung auf, indem er Nachrichten über Tuya's MQTT-Broker austauscht. Erleben Sie den interaktiven Verbindungsaufbau Schritt für Schritt:
+                </p>
+
+                <!-- Simulator Workspace -->
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+                    <!-- Left Column: Step Info -->
+                    <div class="lg:col-span-5 bg-slate-950 p-6 rounded-lg border border-slate-800 flex flex-col justify-between">
+                        <div>
+                            <div class="flex items-center gap-2 mb-3">
+                                <span id="sim-step-badge" class="text-xs font-bold px-2.5 py-1 bg-brand-500/20 text-brand-300 rounded border border-brand-500/30">SCHRITT 1/4</span>
+                                <span class="text-xs text-slate-500">Signalisierungsphase</span>
+                            </div>
+                            <h3 id="sim-step-title" class="text-md font-bold text-white mb-2">1. Konfiguration abrufen</h3>
+                            <p id="sim-step-desc" class="text-sm text-slate-400 leading-relaxed">
+                                Der Web-Client (Ihr Browser oder App) ruft zuerst über die Tuya-Cloud-API die WebRTC-Konfigurationsdaten für das Gerät ab (`GET /v1.0/devices/{device_id}/webrtc-configs`). Damit erhält er die Berechtigungsdaten und die Adresse des Signal-Brokers.
+                            </p>
+                        </div>
+
+                        <!-- Progress Bar & Next Button -->
+                        <div class="mt-8 pt-4 border-t border-slate-800">
+                            <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mb-4">
+                                <div id="sim-progress-bar" class="bg-brand-500 h-full transition-all duration-300" style="width: 25%"></div>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <button onclick="prevSimStep()" id="btn-sim-prev" class="text-xs text-slate-400 hover:text-slate-200 disabled:opacity-30" disabled>
+                                    <i class="fa-solid fa-arrow-left mr-1"></i> Zurück
+                                </button>
+                                <button onclick="nextSimStep()" id="btn-sim-next" class="text-xs bg-brand-600 hover:bg-brand-500 text-white px-4 py-2 rounded font-semibold transition">
+                                    Nächster Schritt <i class="fa-solid fa-arrow-right ml-1"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Column: Visualizer Animation -->
+                    <div class="lg:col-span-7 bg-slate-950 p-6 rounded-lg border border-slate-800 flex flex-col justify-center relative overflow-hidden min-h-[300px]">
+                        <!-- Visual Actors -->
+                        <div class="flex justify-between items-center relative z-10">
+                            <!-- Actor Client -->
+                            <div class="flex flex-col items-center space-y-2 w-24">
+                                <div id="actor-client" class="w-14 h-14 rounded-full bg-slate-900 border-2 border-slate-700 flex items-center justify-center transition-all duration-500">
+                                    <i class="fa-solid fa-laptop text-xl text-slate-400"></i>
+                                </div>
+                                <span class="text-xs font-semibold text-slate-400 text-center">Web Client / App</span>
+                            </div>
+
+                            <!-- Signaling/MQTT Server (Center) -->
+                            <div class="flex flex-col items-center space-y-2 w-28 relative">
+                                <div id="actor-cloud" class="w-16 h-16 rounded-full bg-slate-900 border-2 border-slate-700 flex items-center justify-center transition-all duration-500">
+                                    <i class="fa-solid fa-cloud text-2xl text-slate-400"></i>
+                                </div>
+                                <span class="text-xs font-semibold text-slate-400 text-center">Tuya Cloud (MQTT)</span>
+                            </div>
+
+                            <!-- Actor IP Camera -->
+                            <div class="flex flex-col items-center space-y-2 w-24">
+                                <div id="actor-camera" class="w-14 h-14 rounded-full bg-slate-900 border-2 border-slate-700 flex items-center justify-center transition-all duration-500">
+                                    <i class="fa-solid fa-camera text-xl text-slate-400"></i>
+                                </div>
+                                <span class="text-xs font-semibold text-slate-400 text-center">LSC IP-Kamera</span>
+                            </div>
+                        </div>
+
+                        <!-- Pulse lines and details -->
+                        <div class="mt-8 p-3 bg-slate-900/50 rounded border border-slate-800 text-center">
+                            <span class="text-[11px] font-mono text-slate-500 block mb-1">MQTT NACHRICHTENRAHMEN (SIMULATION)</span>
+                            <div id="sim-message-box" class="text-xs font-mono text-brand-300">
+                                HTTP GET /v1.0/devices/{device_id}/webrtc-configs
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB CONTENT: PLAYER -->
+        <div id="tab-player" class="tab-content hidden space-y-6">
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-6">
+                <h2 class="text-lg font-bold text-white mb-2">Live HLS Stream Tester</h2>
+                <p class="text-sm text-slate-400 mb-6">
+                    HLS (HTTP Live Streaming) ist das ideale Protokoll für Web-Anwendungen, da es nativ im Browser wiedergegeben werden kann. Wenn Sie über den API-Endpunkt eine HLS-URL generiert haben (beginnend mit <code class="bg-slate-950 px-1 py-0.5 rounded text-amber-400 font-mono text-xs">https://...</code>), können Sie diese hier einsetzen und direkt abspielen.
+                </p>
+
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+                    <!-- Player Settings -->
+                    <div class="lg:col-span-5 space-y-6">
+                        <div class="bg-slate-950 p-5 rounded-lg border border-slate-800 space-y-4">
+                            <h3 class="text-sm font-bold text-white uppercase tracking-wider"><i class="fa-solid fa-link text-brand-400 mr-2"></i>Stream URL einfügen</h3>
+                            <div>
+                                <label class="block text-xs text-slate-400 mb-1">M3U8 HLS Stream Link</label>
+                                <input type="text" id="hls-url-input" value="https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8" placeholder="https://..." class="w-full bg-slate-900 border border-slate-800 rounded px-3 py-2 text-xs text-slate-300 font-mono focus:outline-none focus:border-brand-500">
+                            </div>
+                            <button onclick="loadHlsStream()" class="w-full bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold py-2 px-4 rounded transition flex items-center justify-center gap-1.5">
+                                <i class="fa-solid fa-play"></i> Stream laden & abspielen
+                            </button>
+                        </div>
+
+                        <!-- Troubleshooting List -->
+                        <div class="bg-slate-950 p-5 rounded-lg border border-slate-800">
+                            <h3 class="text-sm font-bold text-white mb-2 uppercase tracking-wider text-amber-500"><i class="fa-solid fa-triangle-exclamation mr-2"></i>Kein Bild?</h3>
+                            <ul class="space-y-2 text-xs text-slate-400">
+                                <li class="flex items-start gap-1.5">
+                                    <i class="fa-solid fa-circle text-[6px] mt-1.5 text-slate-500"></i>
+                                    <span>HLS-Stream-URLs von Tuya verfallen nach einer bestimmten Zeit aus Sicherheitsgründen. Generieren Sie bei Bedarf eine neue URL.</span>
+                                </li>
+                                <li class="flex items-start gap-1.5">
+                                    <i class="fa-solid fa-circle text-[6px] mt-1.5 text-slate-500"></i>
+                                    <span>Lokale Netzwerkkameras blockieren manchmal Cross-Origin Requests (CORS). Das Abspielen direkt aus Cloud-Plattformen umgeht dies meist.</span>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- Video Viewport -->
+                    <div class="lg:col-span-7 bg-slate-950 rounded-lg overflow-hidden border border-slate-800 relative group">
+                        <div class="aspect-video bg-black flex items-center justify-center relative">
+                            <video id="video-player" controls class="w-full h-full object-contain hidden" playsinline></video>
+
+                            <!-- Custom Placeholder / Status Overlay -->
+                            <div id="video-placeholder" class="absolute inset-0 flex flex-col items-center justify-center text-center p-6 bg-slate-950">
+                                <div class="w-16 h-16 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-500 mb-4 group-hover:text-brand-500 transition-colors duration-300">
+                                    <i class="fa-solid fa-clapperboard text-2xl"></i>
+                                </div>
+                                <h4 class="text-sm font-bold text-slate-300">Bereit für den Livestream</h4>
+                                <p class="text-xs text-slate-500 mt-1 max-w-sm">Fügen Sie links Ihre HLS M3U8 Stream URL ein und klicken Sie auf laden, um die Kamera-Übertragung zu testen.</p>
+                            </div>
+                        </div>
+                        <div class="bg-slate-900 px-4 py-2 text-xs text-slate-400 border-t border-slate-800 flex justify-between">
+                            <span>Status: <strong id="player-status" class="text-slate-300">Inaktiv</strong></span>
+                            <span>Protokoll: <strong class="text-brand-400">HLS (HTML5)</strong></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-slate-900 bg-slate-950 py-6 text-center text-xs text-slate-500 mt-12">
+        <div class="max-w-7xl mx-auto px-4">
+            <p>Entwickelt für LSC Smart Connect & Tuya Cloud Integrationen. Lokale Verarbeitung – keine Credentials werden gesendet.</p>
+        </div>
+    </footer>
+
+    <script>
+        // Tab switching
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.add('hidden'));
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('block'));
+            document.getElementById(tabId).classList.add('block');
+            document.getElementById(tabId).classList.remove('hidden');
+
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('border-brand-500', 'text-brand-400');
+                btn.classList.add('border-transparent', 'text-slate-400');
+            });
+            document.getElementById('btn-' + tabId).classList.add('border-brand-500', 'text-brand-400');
+            document.getElementById('btn-' + tabId).classList.remove('border-transparent', 'text-slate-400');
+        }
+
+        // Code Language switching
+        function switchLang(langId) {
+            document.querySelectorAll('.lang-code').forEach(code => code.classList.add('hidden'));
+            document.querySelectorAll('.lang-code').forEach(code => code.classList.remove('block'));
+
+            if(langId === 'lang-python') {
+                document.getElementById('code-python').classList.add('block');
+                document.getElementById('code-python').classList.remove('hidden');
+            } else {
+                document.getElementById('code-node').classList.add('block');
+                document.getElementById('code-node').classList.remove('hidden');
+            }
+
+            document.querySelectorAll('.lang-btn').forEach(btn => {
+                btn.classList.remove('border-brand-500', 'text-brand-400');
+                btn.classList.add('border-transparent', 'text-slate-400');
+            });
+            document.getElementById('btn-' + langId).classList.add('border-brand-500', 'text-brand-400');
+            document.getElementById('btn-' + langId).classList.remove('border-transparent', 'text-slate-400');
+        }
+
+        // Interactive Code Generator Templates
+        const clientInput = document.getElementById('gen-client-id');
+        const secretInput = document.getElementById('gen-secret');
+        const deviceInput = document.getElementById('gen-device-id');
+        const regionInput = document.getElementById('gen-region');
+
+        function updateCodeTemplates() {
+            const clientVal = clientInput.value || 'DEIN_CLIENT_ID';
+            const secretVal = secretInput.value || 'DEIN_ACCESS_SECRET';
+            const deviceVal = deviceInput.value || 'DEINE_DEVICE_ID';
+            const regionVal = regionInput.value;
+
+            // Python Template
+            const pythonTemplate = `import time
+import hmac
+import hashlib
+import requests
+import json
+
+# Tuya API Konfigurationsdaten
+CLIENT_ID = "${clientVal}"
+ACCESS_SECRET = "${secretVal}"
+DEVICE_ID = "${deviceVal}"
+BASE_URL = "${regionVal}"
+
+def get_timestamp():
+    return str(int(time.time() * 1000))
+
+def calc_sign(client_id, secret, timestamp, nonce, string_to_sign):
+    # Berechnet die offizielle Tuya API-Signatur (HMAC-SHA256)
+    message = f"{client_id}{timestamp}{nonce}{string_to_sign}"
+    sign = hmac.new(
+        secret.encode('utf-8'),
+        message.encode('utf-8'),
+        hashlib.sha256
+    ).hexdigest().upper()
+    return sign
+
+def get_access_token():
+    # Holt ein temporäres Access-Token für API-Abfragen
+    timestamp = get_timestamp()
+    nonce = ""
+    uri = "/v1.0/token?grant_type=1"
+
+    # Signatur-String für Token-Abfrage (String-to-Sign)
+    string_to_sign = "GET\\n\\n\\n" + uri
+    sign = calc_sign(CLIENT_ID, ACCESS_SECRET, timestamp, nonce, string_to_sign)
+
+    headers = {
+        "client_id": CLIENT_ID,
+        "sign": sign,
+        "t": timestamp,
+        "sign_method": "HMAC256"
+    }
+
+    response = requests.get(f"{BASE_URL}{uri}", headers=headers).json()
+    if response.get("success"):
+        return response["result"]["access_token"]
+    else:
+        raise Exception(f"Fehler beim Token-Abruf: {response.get('msg')}")
+
+def get_webrtc_config(token):
+    # Holt die WebRTC-Konfiguration (STUN, TURN, Auth-Keys für die Signalisierung)
+    timestamp = get_timestamp()
+    nonce = ""
+    uri = f"/v1.0/devices/{DEVICE_ID}/webrtc-configs"
+
+    # Signatur-String mit Access Token
+    string_to_sign = "GET\\n\\n\\n" + uri
+    sign = calc_sign(CLIENT_ID, ACCESS_SECRET, timestamp, nonce, string_to_sign)
+
+    headers = {
+        "client_id": CLIENT_ID,
+        "access_token": token,
+        "sign": sign,
+        "t": timestamp,
+        "sign_method": "HMAC256"
+    }
+
+    response = requests.get(f"{BASE_URL}{uri}", headers=headers).json()
+    return response
+
+# Ausführung
+try:
+    print("Verbinde mit Tuya Cloud...")
+    token = get_access_token()
+    print(f"Access Token erfolgreich generiert: {token[:10]}...")
+
+    config = get_webrtc_config(token)
+    print("\\n--- WebRTC Konfiguration erhalten ---")
+    print(json.dumps(config, indent=4))
+except Exception as e:
+    print(f"Fehler: {e}")`;
+
+            // Node.js Template
+            const nodeTemplate = `const axios = require('axios');
+const crypto = require('crypto');
+
+// Tuya API Konfigurationsdaten
+const CLIENT_ID = '${clientVal}';
+const ACCESS_SECRET = '${secretVal}';
+const DEVICE_ID = '${deviceVal}';
+const BASE_URL = '${regionVal}';
+
+function getTimestamp() {
+    return Date.now().toString();
+}
+
+function calcSign(clientId, secret, timestamp, nonce, stringToSign) {
+    const str = clientId + timestamp + nonce + stringToSign;
+    return crypto
+        .createHmac('sha256', secret)
+        .update(str)
+        .digest('hex')
+        .toUpperCase();
+}
+
+async function getAccessToken() {
+    const timestamp = getTimestamp();
+    const nonce = '';
+    const uri = '/v1.0/token?grant_type=1';
+
+    const stringToSign = 'GET\\n\\n\\n' + uri;
+    const sign = calcSign(CLIENT_ID, ACCESS_SECRET, timestamp, nonce, stringToSign);
+
+    const response = await axios.get(BASE_URL + uri, {
+        headers: {
+            client_id: CLIENT_ID,
+            sign: sign,
+            t: timestamp,
+            sign_method: 'HMAC256'
+        }
+    });
+
+    if (response.data.success) {
+        return response.data.result.access_token;
+    } else {
+        throw new Error('Token Error: ' + response.data.msg);
+    }
+}
+
+async function getWebRTCConfig(token) {
+    const timestamp = getTimestamp();
+    const nonce = '';
+    const uri = \`/v1.0/devices/\${DEVICE_ID}/webrtc-configs\`;
+
+    const stringToSign = 'GET\\n\\n\\n' + uri;
+    const sign = calcSign(CLIENT_ID, ACCESS_SECRET, timestamp, nonce, stringToSign);
+
+    const response = await axios.get(BASE_URL + uri, {
+        headers: {
+            client_id: CLIENT_ID,
+            access_token: token,
+            sign: sign,
+            t: timestamp,
+            sign_method: 'HMAC256'
+        }
+    });
+
+    return response.data;
+}
+
+// Ausführung
+async function run() {
+    try {
+        console.log('Verbinde mit Tuya Cloud...');
+        const token = await getAccessToken();
+        console.log('Access Token generiert!');
+
+        const config = await getWebRTCConfig(token);
+        console.log('\\n--- WebRTC Konfiguration ---');
+        console.log(JSON.stringify(config, null, 2));
+    } catch (error) {
+        console.error('Fehler bei der Abfrage:', error.message);
+    }
+}
+
+run();`;
+
+            document.getElementById('python-placeholder').textContent = pythonTemplate;
+            document.getElementById('node-placeholder').textContent = nodeTemplate;
+        }
+
+        // Add Event Listeners for inputs
+        [clientInput, secretInput, deviceInput, regionInput].forEach(elem => {
+            elem.addEventListener('input', updateCodeTemplates);
+            elem.addEventListener('change', updateCodeTemplates);
+        });
+
+        // Copy code to clipboard
+        function copyCode() {
+            const isPython = document.getElementById('code-python').classList.contains('block');
+            const codeText = isPython
+                ? document.getElementById('python-placeholder').textContent
+                : document.getElementById('node-placeholder').textContent;
+
+            const el = document.createElement('textarea');
+            el.value = codeText;
+            document.body.appendChild(el);
+            el.select();
+            document.execCommand('copy');
+            document.body.removeChild(el);
+
+            alert('Code in die Zwischenablage kopiert!');
+        }
+
+        // SIMULATOR LOGIC
+        let currentSimStep = 1;
+        const simSteps = [
+            {
+                badge: "SCHRITT 1/4",
+                title: "1. Konfiguration abrufen",
+                desc: "Der Web-Client (Ihr Browser oder App) ruft zuerst über die Tuya-Cloud-API die WebRTC-Konfigurationsdaten für das Gerät ab (GET /v1.0/devices/{device_id}/webrtc-configs). Damit erhält er die Berechtigungsdaten und die Adresse des Signal-Brokers.",
+                actorStates: { client: 'border-brand-500 bg-brand-950/20 text-brand-400', cloud: 'border-slate-700 bg-slate-900 text-slate-500', camera: 'border-slate-700 bg-slate-900 text-slate-500' },
+                msgBox: "Client ➔ Cloud (API): GET /v1.0/devices/{device_id}/webrtc-configs"
+            },
+            {
+                badge: "SCHRITT 2/4",
+                title: "2. Offer erstellen & senden (SDP)",
+                desc: "Der Client generiert lokal ein WebRTC Offer (Session Description Protocol - SDP) mit seinen Audio-/Videoparametern. Dieses Offer schickt er als MQTT-Paket an die Tuya Cloud, adressiert an die IP-Kamera.",
+                actorStates: { client: 'border-slate-700 bg-slate-900 text-slate-500', cloud: 'border-brand-500 bg-brand-950/20 text-brand-400', camera: 'border-slate-700 bg-slate-900 text-slate-500' },
+                msgBox: 'MQTT Publish: { "header": { "type": "offer" }, "msg": { "sdp": "v=0\\no=..." } }'
+            },
+            {
+                badge: "SCHRITT 3/4",
+                title: "3. Kamera antwortet (Answer SDP)",
+                desc: "Die LSC Kamera erhält das Offer über die permanente MQTT-Verbindung. Sie prüft die Codecs, generiert ihr eigenes 'Answer' SDP und sendet dieses über MQTT an den Client zurück. Gleichzeitig werden ICE-Kandidaten (Netzwerk-Pfade) ausgetauscht.",
+                actorStates: { client: 'border-slate-700 bg-slate-900 text-slate-500', cloud: 'border-slate-700 bg-slate-900 text-slate-500', camera: 'border-brand-500 bg-brand-950/20 text-brand-400' },
+                msgBox: 'MQTT Response von Kamera: { "header": { "type": "answer" }, "msg": { "sdp": "v=0\\no=..." } }'
+            },
+            {
+                badge: "SCHRITT 4/4",
+                title: "4. Direkter P2P Medienstrom",
+                desc: "Nachdem die Signalisierung über MQTT abgeschlossen ist, ist kein Server mehr nötig. Der Web-Client und die Kamera verbinden sich direkt über STUN/TURN (WebRTC Peer Connection). Der Video- und Audiostrom fließt verschlüsselt und in Echtzeit (&lt; 0.5s Verzögerung).",
+                actorStates: { client: 'border-green-500 bg-green-950/20 text-green-400', cloud: 'border-slate-800 bg-slate-900 text-slate-600', camera: 'border-green-500 bg-green-950/20 text-green-400' },
+                msgBox: "📶 Peer Connection ESTABLISHED (SRTP / DTLS Audio & Video Live)"
+            }
+        ];
+
+        function updateSimUI() {
+            const step = simSteps[currentSimStep - 1];
+            document.getElementById('sim-step-badge').textContent = step.badge;
+            document.getElementById('sim-step-title').textContent = step.title;
+            document.getElementById('sim-step-desc').innerHTML = step.desc;
+            document.getElementById('sim-message-box').innerHTML = step.msgBox;
+
+            // Update Progress Bar
+            document.getElementById('sim-progress-bar').style.width = (currentSimStep * 25) + '%';
+
+            // Update Actor classes
+            const actors = {
+                client: document.getElementById('actor-client'),
+                cloud: document.getElementById('actor-cloud'),
+                camera: document.getElementById('actor-camera')
+            };
+
+            for (let act in actors) {
+                actors[act].className = "w-14 h-14 rounded-full flex items-center justify-center transition-all duration-500 " + (act === 'cloud' && currentSimStep !== 4 ? 'w-16 h-16 ' : '') + step.actorStates[act];
+            }
+
+            // Enable/Disable buttons
+            document.getElementById('btn-sim-prev').disabled = currentSimStep === 1;
+            document.getElementById('btn-sim-next').innerHTML = currentSimStep === 4
+                ? 'Simulation Neustarten <i class="fa-solid fa-rotate-left ml-1"></i>'
+                : 'Nächster Schritt <i class="fa-solid fa-arrow-right ml-1"></i>';
+        }
+
+        function nextSimStep() {
+            if (currentSimStep === 4) {
+                currentSimStep = 1;
+            } else {
+                currentSimStep++;
+            }
+            updateSimUI();
+        }
+
+        function prevSimStep() {
+            if (currentSimStep > 1) {
+                currentSimStep--;
+                updateSimUI();
+            }
+        }
+
+
+        // HLS PLAYER IMPLEMENTATION
+        let hls = null;
+
+        function loadHlsStream() {
+            const video = document.getElementById('video-player');
+            const placeholder = document.getElementById('video-placeholder');
+            const statusLabel = document.getElementById('player-status');
+            const hlsUrl = document.getElementById('hls-url-input').value;
+
+            if (!hlsUrl) {
+                alert('Bitte geben Sie eine gültige M3U8-Adresse ein.');
+                return;
+            }
+
+            if (hls) {
+                hls.destroy();
+            }
+
+            placeholder.classList.add('hidden');
+            video.classList.remove('hidden');
+            statusLabel.textContent = 'Verbinde...';
+            statusLabel.className = 'text-amber-400';
+
+            if (Hls.isSupported()) {
+                hls = new Hls({
+                    maxMaxBufferLength: 10,
+                    enableWorker: true
+                });
+                hls.loadSource(hlsUrl);
+                hls.attachMedia(video);
+
+                hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                    video.play();
+                    statusLabel.textContent = 'Live-Übertragung';
+                    statusLabel.className = 'text-green-400 font-bold';
+                });
+
+                hls.on(Hls.Events.ERROR, function (event, data) {
+                    if (data.fatal) {
+                        statusLabel.textContent = 'Stream-Fehler / Abgelaufen';
+                        statusLabel.className = 'text-rose-500 font-bold';
+                        console.error('HLS Fatal Error:', data);
+                    }
+                });
+            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                video.src = hlsUrl;
+                video.addEventListener('loadedmetadata', function() {
+                    video.play();
+                    statusLabel.textContent = 'Live-Übertragung (Native)';
+                    statusLabel.className = 'text-green-400 font-bold';
+                });
+            } else {
+                statusLabel.textContent = 'Browser nicht unterstützt';
+                statusLabel.className = 'text-rose-500';
+                alert('Ihr Browser unterstützt kein HLS-Streaming.');
+            }
+        }
+
+        window.onload = function() {
+            updateCodeTemplates();
+            updateSimUI();
+        };
+    </script>
+</body>
+</html>
