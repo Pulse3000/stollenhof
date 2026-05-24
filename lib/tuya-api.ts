@@ -108,9 +108,13 @@ export async function getWebRtcConfig(deviceId: string): Promise<TuyaWebRtcConfi
 
 // Stream-URL von der Tuya Cloud anfordern (HLS).
 // Die URL ist ~30 Minuten gültig – Frontend muss rechtzeitig erneut anfragen.
-export async function allocateStream(deviceId: string): Promise<TuyaStreamResult> {
+// Wird ein `uid` übergeben, wird der User-ID-Variant-Endpunkt benutzt
+// (/v1.0/users/{uid}/devices/{id}/...) – manche Tuya-Projekte verlangen den.
+export async function allocateStream(deviceId: string, uid?: string): Promise<TuyaStreamResult> {
   const token = await getAccessToken()
-  const path = `/v1.0/devices/${deviceId}/stream/actions/allocate`
+  const path = uid
+    ? `/v1.0/users/${uid}/devices/${deviceId}/stream/actions/allocate`
+    : `/v1.0/devices/${deviceId}/stream/actions/allocate`
   const body = JSON.stringify({ type: 'hls' })
   const res = await fetch(`${BASE}${path}`, {
     method: 'POST',
