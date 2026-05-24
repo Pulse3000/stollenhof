@@ -179,24 +179,24 @@ export default function StallwachePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config.enabled, config.streamMode])
 
-  // RTCPeerConnection aufbauen sobald WebRTC-Config vorliegt.
-  // ACHTUNG: Die SDP-Aushandlung läuft bei Tuya über deren MQTT-Signaling-
-  // Service (moto_id) mit Protobuf-Nachrichten. Diese Implementierung
-  // erstellt die PeerConnection mit den ICE-Servern und einen Offer, der
-  // an die Signaling-Bridge geschickt werden muss. Solange diese fehlt,
-  // bleibt der PC in 'new' / 'connecting' – die Configs sind dennoch
-  // sichtbar und über das Diagnose-Panel testbar.
+  // WHEP-Handshake: SDP-Offer per POST an go2rtc, Answer als Body zurück.
+  // ICE-Server aus Tuya-Configs werden zusätzlich genutzt (für TURN-Fallback,
+  // falls go2rtc nur STUN konfiguriert hat).
   useEffect(() => {
-    if (!config.enabled || config.streamMode !== 'webrtc' || !webrtcConfig) return
-    if (!webrtcConfig.supports_webrtc) {
-      setWebrtcError('Gerät meldet supports_webrtc=false – Kamera-Firmware prüfen.')
+    if (!config.enabled || config.streamMode !== 'webrtc') return
+    if (!config.whepUrl) {
+      setWebrtcError('Keine WHEP-URL konfiguriert – Konfiguration prüfen.')
       return
     }
-    const iceServers: RTCIceServer[] = webrtcConfig.p2p_config.ices.map((ice) => ({
-      urls: ice.urls,
-      username: ice.username,
-      credential: ice.credential,
-    }))
+    const iceServers: RTCIceServer[] = webrtcConfig?.p2p_config.ices
+      ? webrtcConfig.p2p_config.ices.map((ice) => ({
+          urls: ice.urls,
+          username: ice.username,
+          credential: ice.credential,
+        }))
+      : [{ urls: 'stun:stun.cloudflare.com:3478' }]
+
+    let cancelled = false
     const pc = new RTCPeerConnection({ iceServers })
     pcRef.current = pc
     pc.addTransceiver('video', { direction: 'recvonly' })
@@ -208,20 +208,53 @@ export default function StallwachePage() {
         video.play().catch(() => {})
       }
     }
-    pc.onconnectionstatechange = () => setPcState(pc.connectionState)
+    pc.onconnectionstatechange = () => {
+      if (!cancelled) setPcState(pc.connectionState)
+    }
 
-    pc.createOffer()
-      .then((offer) => pc.setLocalDescription(offer))
-      .catch((err) => setWebrtcError(`SDP-Offer fehlgeschlagen: ${err.message}`))
+    const run = async () => {
+      try {
+        const offer = await pc.createOffer()
+        await pc.setLocalDescription(offer)
+        // Warten bis ICE-Gathering abgeschlossen (non-trickle WHEP)
+        await new Promise<void>((resolve) => {
+          if (pc.iceGatheringState === 'complete') return resolve()
+          const onChange = () => {
+            if (pc.iceGatheringState === 'complete') {
+              pc.removeEventListener('icegatheringstatechange', onChange)
+              resolve()
+            }
+          }
+          pc.addEventListener('icegatheringstatechange', onChange)
+          setTimeout(resolve, 3000) // Safety-Timeout
+        })
+        if (cancelled) return
+        const res = await fetch(config.whepUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/sdp' },
+          body: pc.localDescription?.sdp ?? '',
+        })
+        if (!res.ok) throw new Error(`WHEP HTTP ${res.status}`)
+        const answerSdp = await res.text()
+        if (cancelled) return
+        await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp })
+      } catch (err) {
+        if (!cancelled) setWebrtcError(
+          err instanceof Error ? `WHEP-Verbindung fehlgeschlagen: ${err.message}` : 'Unbekannter Fehler',
+        )
+      }
+    }
+    run()
 
     return () => {
+      cancelled = true
       pc.close()
       pcRef.current = null
       setPcState('idle')
       const video = videoRef.current
       if (video) video.srcObject = null
     }
-  }, [config.enabled, config.streamMode, webrtcConfig])
+  }, [config.enabled, config.streamMode, config.whepUrl, webrtcConfig, streamKey])
 
   // HLS-Player anhängen – Quelle: tuyaUrl (API) oder config.cameraStreamUrlHls (Fallback)
   const activeStreamUrl = tuyaUrl ?? config.cameraStreamUrlHls
@@ -285,6 +318,8 @@ export default function StallwachePage() {
     setStreamError(false)
     setReconnectAttempt(0)
     if (config.streamMode === 'webrtc') {
+      setWebrtcError(null)
+      setStreamKey((k) => k + 1) // erzwingt Neuaufbau des PC-Effekts
       fetchTuyaWebRtcConfig()
     } else {
       fetchTuyaStreamUrl()
@@ -636,16 +671,32 @@ export default function StallwachePage() {
                   )}
 
                   {/* WebRTC: warten auf Stream */}
-                  {config.streamMode === 'webrtc' && webrtcConfig && pcState !== 'connected' && (
-                    <div className="text-center px-6 max-w-sm">
-                      <Radio className="w-10 h-10 mx-auto mb-3 text-stone-600" />
-                      <p className="text-sm font-medium text-stone-300 mb-1">WebRTC bereit</p>
+                  {config.streamMode === 'webrtc' && config.whepUrl && !webrtcError &&
+                    pcState !== 'connected' && (
+                    <div className="text-center px-6 max-w-sm pointer-events-none">
+                      <Radio className="w-10 h-10 mx-auto mb-3 text-stone-600 animate-pulse" />
+                      <p className="text-sm font-medium text-stone-300 mb-1">WHEP-Handshake…</p>
                       <p className="text-xs text-stone-500 mb-1">
-                        ICE-Server geladen · PeerConnection: <span className="font-mono">{pcState}</span>
+                        PeerConnection: <span className="font-mono">{pcState}</span>
                       </p>
-                      <p className="text-xs text-stone-600">
-                        SDP-Signaling via Tuya MQTT noch nicht angebunden – Details im Diagnose-Panel.
+                      <p className="text-xs text-stone-600 break-all">
+                        {config.whepUrl}
                       </p>
+                    </div>
+                  )}
+
+                  {/* WHEP-Fehler */}
+                  {config.streamMode === 'webrtc' && webrtcError && (
+                    <div className="text-center px-6 max-w-sm">
+                      <AlertTriangle className="w-10 h-10 mx-auto mb-3 text-red-700/60" />
+                      <p className="text-sm font-medium text-stone-300 mb-1">WebRTC nicht verbunden</p>
+                      <p className="text-xs text-stone-600 font-mono break-all mb-3">{webrtcError}</p>
+                      <button
+                        onClick={manualReconnect}
+                        className="text-xs text-stone-300 hover:text-white border border-stone-700 hover:border-stone-500 px-4 py-2 rounded-lg transition-colors"
+                      >
+                        Neu verbinden
+                      </button>
                     </div>
                   )}
 
@@ -670,7 +721,7 @@ export default function StallwachePage() {
 
                   {/* Video-Element (gemeinsam für HLS und WebRTC) */}
                   {((config.streamMode === 'hls' && activeStreamUrl && !streamError) ||
-                    (config.streamMode === 'webrtc' && webrtcConfig)) && (
+                    (config.streamMode === 'webrtc' && config.whepUrl && !webrtcError)) && (
                     <>
                       <video
                         ref={videoRef}
@@ -685,7 +736,7 @@ export default function StallwachePage() {
                       </video>
                       <div className="absolute bottom-3 right-3 bg-stone-900/70 text-stone-400 text-[10px] px-2 py-1 rounded font-mono pointer-events-none">
                         {config.streamMode === 'webrtc'
-                          ? 'WebRTC · Tuya Cloud P2P'
+                          ? 'WebRTC · go2rtc WHEP'
                           : tuyaUrl
                             ? 'HLS · Tuya Cloud CDN'
                             : 'HLS · go2rtc via Cloudflare'}
@@ -834,17 +885,15 @@ export default function StallwachePage() {
                 </div>
               )}
 
-              <div className="rounded-lg border border-amber-100 bg-amber-50 p-3 text-xs text-amber-900">
-                <p className="font-semibold mb-1">Hinweis: SDP-Signalisierung fehlt noch</p>
-                <p className="text-amber-800">
-                  Configs (ICE, auth, moto_id) sind erfolgreich geladen und die{' '}
-                  <code className="font-mono bg-amber-100 px-1 rounded">RTCPeerConnection</code>{' '}
-                  ist mit den ICE-Servern initialisiert. Für ein laufendes Bild muss der
-                  SDP-Offer noch über Tuyas MQTT-Signaling (Topic via{' '}
-                  <code className="font-mono bg-amber-100 px-1 rounded">moto_id</code>,
-                  Protobuf-Payload) an die Kamera geschickt und die Answer zurückgelesen werden –
-                  entweder via Tuya-IoT-SDK auf einem Edge-Worker, oder als Signaling-Proxy auf
-                  dem lokalen Ubuntu-System.
+              <div className="rounded-lg border border-stone-100 bg-stone-50 p-3 text-xs text-stone-700">
+                <p className="font-semibold mb-1 text-stone-800">Cloud-Diagnose</p>
+                <p>
+                  Das Browser-Streaming läuft über die <strong>WHEP-URL</strong> oben
+                  (go2rtc). Diese Werte hier sind die <em>parallel</em> abgerufenen
+                  Tuya-Cloud-Configs – nützlich zum Prüfen, ob die Kamera bei Tuya
+                  überhaupt als WebRTC-fähig registriert ist. ICE-Server (TURN
+                  inkl. Credentials/TTL) werden zusätzlich an die PeerConnection
+                  übergeben, als TURN-Fallback wenn go2rtc nur STUN konfiguriert hat.
                 </p>
               </div>
             </div>
@@ -1055,9 +1104,24 @@ export default function StallwachePage() {
                   ))}
                 </div>
                 <p className="text-xs text-stone-400 mt-1">
-                  HLS funktioniert sofort über die Tuya-Cloud (~5–10 s Latenz).
-                  WebRTC lädt nur die Configs (ICE-Server, moto_id); die SDP-Aushandlung
-                  läuft bei Tuya über deren MQTT-Signalisierung – siehe Diagnose-Panel.
+                  HLS = Tuya-Cloud direkt (~5–10 s Latenz). WebRTC = go2rtc WHEP-Endpoint
+                  (Sub-Second-Latenz). go2rtc nimmt entweder RTSP (LSC ONVIF) oder
+                  Tuya-Cloud (<code>tuya://</code>-Source) als Eingang.
+                </p>
+              </div>
+              <div className="md:col-span-2">
+                <Label>WHEP-URL (WebRTC-Modus)</Label>
+                <Input
+                  className="mt-1 font-mono text-sm"
+                  value={config.whepUrl}
+                  onChange={(e) => setConfig({ ...config, whepUrl: e.target.value })}
+                  placeholder="https://stream.stollenhof.de/api/webrtc?src=stallwache_tuya"
+                />
+                <p className="text-xs text-stone-400 mt-1">
+                  go2rtc WHEP-Endpoint via Cloudflare Tunnel. Format:{' '}
+                  <code className="bg-stone-100 px-1 rounded">
+                    https://&lt;tunnel&gt;/api/webrtc?src=&lt;stream-name&gt;
+                  </code>
                 </p>
               </div>
               <div>
@@ -1331,8 +1395,15 @@ export default function StallwachePage() {
                 <pre className="bg-stone-900 text-stone-100 rounded p-3 overflow-x-auto text-xs font-mono leading-relaxed">
 {`streams:
   stallwache:
-    # Passwort vorher in LSC-App unter "PC-Ansicht/ONVIF" setzen
+    # Lokaler RTSP-Pfad (LSC ONVIF) – schnellste Latenz, nur im LAN
     - rtsp://admin:DEIN_ONVIF_PASSWORT@192.168.178.104:554/live/ch0
+
+  stallwache_tuya:
+    # Tuya-Cloud-Source – go2rtc holt den Stream über Tuyas P2P-Signaling,
+    # funktioniert auch wenn ONVIF nicht aktivierbar ist oder die Kamera
+    # an einem fremden Standort steht.
+    # Format: tuya://CLIENT_ID:CLIENT_SECRET@DEVICE_ID?endpoint=eu
+    - tuya://CLIENT_ID:CLIENT_SECRET@DEVICE_ID?endpoint=eu
 
 api:
   listen: ":1984"
@@ -1344,6 +1415,13 @@ webrtc:
   candidates:
     - stun:8555`}
                 </pre>
+                <p className="text-xs text-stone-500 mt-2">
+                  Für den WebRTC-Modus in der Stallwache: WHEP-URL ist{' '}
+                  <code className="bg-stone-100 px-1 rounded">
+                    https://stream.stollenhof.de/api/webrtc?src=&lt;stream-name&gt;
+                  </code>
+                  . Cloud-Project-Credentials (nicht App-SDK-Keys) eintragen.
+                </p>
               </div>
               <div className="rounded-lg border border-stone-200 p-4">
                 <p className="font-semibold text-stone-900 mb-2">Docker-Compose (empfohlen)</p>
