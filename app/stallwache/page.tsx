@@ -41,6 +41,7 @@ import {
   type StallwacheStatus,
   type StallwacheEvent,
   type StallwacheEventTyp,
+  type StallwacheStreamMode,
   type Kuh,
 } from '@/lib/data'
 import { Button } from '@/components/ui/button'
@@ -58,6 +59,19 @@ const eventTypeConfig: Record<StallwacheEventTyp, { color: string; icon: typeof 
 }
 
 type Tab = 'live' | 'events' | 'config' | 'setup'
+
+// Minimaler Subset der Tuya WebRTC-Config (vgl. /api/webrtc-config)
+type TuyaIce = { urls: string; username?: string; credential?: string; ttl?: number }
+type TuyaWebRtcConfigClient = {
+  id: string
+  supports_webrtc: boolean
+  auth: string
+  moto_id: string
+  skill: string
+  vedio_clarity?: number
+  p2p_config: { ices: TuyaIce[] }
+  audio_attributes?: { call_mode?: number[]; hardware_capability?: number[] }
+}
 
 const emptyEvent = (): Omit<StallwacheEvent, 'id'> => ({
   zeitstempel: new Date().toISOString().slice(0, 16),
@@ -94,9 +108,15 @@ export default function StallwachePage() {
   const [tuyaUrl, setTuyaUrl] = useState<string | null>(null)
   const [tuyaLoading, setTuyaLoading] = useState(false)
   const [tuyaError, setTuyaError] = useState<string | null>(null)
+  // Tuya WebRTC-Config (aus /api/webrtc-config)
+  const [webrtcConfig, setWebrtcConfig] = useState<TuyaWebRtcConfigClient | null>(null)
+  const [webrtcLoading, setWebrtcLoading] = useState(false)
+  const [webrtcError, setWebrtcError] = useState<string | null>(null)
+  const [pcState, setPcState] = useState<RTCPeerConnectionState | 'idle'>('idle')
   const previewRef = useRef<HTMLDivElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsRef = useRef<Hls | null>(null)
+  const pcRef = useRef<RTCPeerConnection | null>(null)
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -124,26 +144,91 @@ export default function StallwachePage() {
     }
   }
 
-  // Stream-URL laden wenn System gestartet wird
+  // Tuya WebRTC-Config laden – liefert ICE-Server, moto_id (Signaling) und auth-Token
+  async function fetchTuyaWebRtcConfig() {
+    setWebrtcLoading(true)
+    setWebrtcError(null)
+    try {
+      const res = await fetch('/api/webrtc-config', { cache: 'no-store' })
+      const data: TuyaWebRtcConfigClient & { error?: string } = await res.json()
+      if (!res.ok || !data.p2p_config) throw new Error(data.error ?? `HTTP ${res.status}`)
+      setWebrtcConfig(data)
+    } catch (err) {
+      setWebrtcError(err instanceof Error ? err.message : 'Unbekannter Fehler')
+    } finally {
+      setWebrtcLoading(false)
+    }
+  }
+
+  // Stream-Quelle laden wenn System gestartet wird (abhängig vom gewählten Modus)
   useEffect(() => {
     if (!config.enabled) {
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
       setTuyaUrl(null)
+      setWebrtcConfig(null)
       return
     }
-    fetchTuyaStreamUrl()
+    if (config.streamMode === 'webrtc') {
+      fetchTuyaWebRtcConfig()
+    } else {
+      fetchTuyaStreamUrl()
+    }
     return () => {
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config.enabled])
+  }, [config.enabled, config.streamMode])
+
+  // RTCPeerConnection aufbauen sobald WebRTC-Config vorliegt.
+  // ACHTUNG: Die SDP-Aushandlung läuft bei Tuya über deren MQTT-Signaling-
+  // Service (moto_id) mit Protobuf-Nachrichten. Diese Implementierung
+  // erstellt die PeerConnection mit den ICE-Servern und einen Offer, der
+  // an die Signaling-Bridge geschickt werden muss. Solange diese fehlt,
+  // bleibt der PC in 'new' / 'connecting' – die Configs sind dennoch
+  // sichtbar und über das Diagnose-Panel testbar.
+  useEffect(() => {
+    if (!config.enabled || config.streamMode !== 'webrtc' || !webrtcConfig) return
+    if (!webrtcConfig.supports_webrtc) {
+      setWebrtcError('Gerät meldet supports_webrtc=false – Kamera-Firmware prüfen.')
+      return
+    }
+    const iceServers: RTCIceServer[] = webrtcConfig.p2p_config.ices.map((ice) => ({
+      urls: ice.urls,
+      username: ice.username,
+      credential: ice.credential,
+    }))
+    const pc = new RTCPeerConnection({ iceServers })
+    pcRef.current = pc
+    pc.addTransceiver('video', { direction: 'recvonly' })
+    pc.addTransceiver('audio', { direction: 'recvonly' })
+    pc.ontrack = (e) => {
+      const video = videoRef.current
+      if (video && e.streams[0]) {
+        video.srcObject = e.streams[0]
+        video.play().catch(() => {})
+      }
+    }
+    pc.onconnectionstatechange = () => setPcState(pc.connectionState)
+
+    pc.createOffer()
+      .then((offer) => pc.setLocalDescription(offer))
+      .catch((err) => setWebrtcError(`SDP-Offer fehlgeschlagen: ${err.message}`))
+
+    return () => {
+      pc.close()
+      pcRef.current = null
+      setPcState('idle')
+      const video = videoRef.current
+      if (video) video.srcObject = null
+    }
+  }, [config.enabled, config.streamMode, webrtcConfig])
 
   // HLS-Player anhängen – Quelle: tuyaUrl (API) oder config.cameraStreamUrlHls (Fallback)
   const activeStreamUrl = tuyaUrl ?? config.cameraStreamUrlHls
 
   // HLS-Player anhängen (hls.js für Chrome/Firefox, natives HLS für Safari/iOS)
   useEffect(() => {
-    if (!config.enabled || !activeStreamUrl) return
+    if (!config.enabled || config.streamMode !== 'hls' || !activeStreamUrl) return
     const video = videoRef.current
     if (!video) return
 
@@ -179,11 +264,11 @@ export default function StallwachePage() {
       video.removeAttribute('src')
       video.load()
     }
-  }, [config.enabled, activeStreamUrl, streamKey])
+  }, [config.enabled, config.streamMode, activeStreamUrl, streamKey])
 
   // Auto-reconnect (Exponential Backoff): nach hls.js-Fehler neue URL holen (Token könnte abgelaufen sein)
   useEffect(() => {
-    if (!streamError || !config.enabled || !activeStreamUrl) return
+    if (!streamError || !config.enabled || config.streamMode !== 'hls' || !activeStreamUrl) return
     if (reconnectAttempt >= 5) return
     const delayMs = 2000 * Math.pow(2, reconnectAttempt)
     reconnectTimerRef.current = setTimeout(() => {
@@ -199,7 +284,11 @@ export default function StallwachePage() {
     if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
     setStreamError(false)
     setReconnectAttempt(0)
-    fetchTuyaStreamUrl()
+    if (config.streamMode === 'webrtc') {
+      fetchTuyaWebRtcConfig()
+    } else {
+      fetchTuyaStreamUrl()
+    }
   }
 
   function toggleFullscreen() {
@@ -487,9 +576,10 @@ export default function StallwachePage() {
                 )}
               </div>
               <div className="flex items-center gap-0.5">
-                {tuyaLoading && (
+                {(tuyaLoading || webrtcLoading) && (
                   <span className="text-xs text-stone-500 flex items-center gap-1 mr-2">
-                    <RefreshCw className="w-3 h-3 animate-spin" /> Tuya…
+                    <RefreshCw className="w-3 h-3 animate-spin" />
+                    {config.streamMode === 'webrtc' ? 'WebRTC…' : 'Tuya…'}
                   </span>
                 )}
                 {config.enabled && (activeStreamUrl || config.cameraStreamUrlHls) && (
@@ -530,15 +620,37 @@ export default function StallwachePage() {
               {config.enabled ? (
                 <>
                   {/* Tuya-URL wird geladen */}
-                  {tuyaLoading && !tuyaUrl && (
+                  {config.streamMode === 'hls' && tuyaLoading && !tuyaUrl && (
                     <div className="text-center">
                       <RefreshCw className="w-8 h-8 mx-auto mb-3 text-stone-600 animate-spin" />
                       <p className="text-sm text-stone-500">Stream-URL wird von Tuya Cloud geladen…</p>
                     </div>
                   )}
 
+                  {/* WebRTC: Configs laden */}
+                  {config.streamMode === 'webrtc' && webrtcLoading && !webrtcConfig && (
+                    <div className="text-center">
+                      <RefreshCw className="w-8 h-8 mx-auto mb-3 text-stone-600 animate-spin" />
+                      <p className="text-sm text-stone-500">WebRTC-Konfiguration wird geladen…</p>
+                    </div>
+                  )}
+
+                  {/* WebRTC: warten auf Stream */}
+                  {config.streamMode === 'webrtc' && webrtcConfig && pcState !== 'connected' && (
+                    <div className="text-center px-6 max-w-sm">
+                      <Radio className="w-10 h-10 mx-auto mb-3 text-stone-600" />
+                      <p className="text-sm font-medium text-stone-300 mb-1">WebRTC bereit</p>
+                      <p className="text-xs text-stone-500 mb-1">
+                        ICE-Server geladen · PeerConnection: <span className="font-mono">{pcState}</span>
+                      </p>
+                      <p className="text-xs text-stone-600">
+                        SDP-Signaling via Tuya MQTT noch nicht angebunden – Details im Diagnose-Panel.
+                      </p>
+                    </div>
+                  )}
+
                   {/* Tuya API-Fehler */}
-                  {tuyaError && !tuyaUrl && (
+                  {config.streamMode === 'hls' && tuyaError && !tuyaUrl && (
                     <div className="text-center px-6 max-w-sm">
                       <AlertTriangle className="w-10 h-10 mx-auto mb-3 text-red-700/60" />
                       <p className="text-sm font-medium text-stone-300 mb-1">Tuya API nicht erreichbar</p>
@@ -556,8 +668,9 @@ export default function StallwachePage() {
                     </div>
                   )}
 
-                  {/* HLS-Video */}
-                  {activeStreamUrl && !streamError && (
+                  {/* Video-Element (gemeinsam für HLS und WebRTC) */}
+                  {((config.streamMode === 'hls' && activeStreamUrl && !streamError) ||
+                    (config.streamMode === 'webrtc' && webrtcConfig)) && (
                     <>
                       <video
                         ref={videoRef}
@@ -571,13 +684,17 @@ export default function StallwachePage() {
                         Stream wird geladen oder Browser nicht unterstützt.
                       </video>
                       <div className="absolute bottom-3 right-3 bg-stone-900/70 text-stone-400 text-[10px] px-2 py-1 rounded font-mono pointer-events-none">
-                        {tuyaUrl ? 'HLS · Tuya Cloud CDN' : 'HLS · go2rtc via Cloudflare'}
+                        {config.streamMode === 'webrtc'
+                          ? 'WebRTC · Tuya Cloud P2P'
+                          : tuyaUrl
+                            ? 'HLS · Tuya Cloud CDN'
+                            : 'HLS · go2rtc via Cloudflare'}
                       </div>
                     </>
                   )}
 
                   {/* HLS-Fehler */}
-                  {activeStreamUrl && streamError && (
+                  {config.streamMode === 'hls' && activeStreamUrl && streamError && (
                     <div className="text-center px-6 max-w-sm">
                       <Camera className="w-10 h-10 mx-auto mb-3 text-stone-600" />
                       <p className="text-sm font-medium text-stone-300 mb-1">Stream unterbrochen</p>
@@ -601,7 +718,7 @@ export default function StallwachePage() {
                   )}
 
                   {/* Noch keine URL und kein Fehler */}
-                  {!tuyaLoading && !tuyaError && !activeStreamUrl && (
+                  {config.streamMode === 'hls' && !tuyaLoading && !tuyaError && !activeStreamUrl && (
                     <div className="text-center">
                       <Camera className="w-10 h-10 mx-auto mb-3 text-stone-700" />
                       <p className="text-sm text-stone-500">Kein Stream konfiguriert</p>
@@ -637,6 +754,101 @@ export default function StallwachePage() {
               <span className="font-mono">{config.go2rtcPublicUrl || '–'}</span>
             </div>
           </div>
+
+          {/* WebRTC-Diagnose-Panel */}
+          {config.enabled && config.streamMode === 'webrtc' && (
+            <div className="bg-white rounded-xl border border-stone-200 p-5 space-y-3">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <h2 className="font-semibold text-stone-900 flex items-center gap-2">
+                  <Radio className="w-4 h-4 text-stone-500" />
+                  Tuya WebRTC – Diagnose
+                </h2>
+                <div className="flex items-center gap-2 text-xs">
+                  <span
+                    className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full font-medium ${
+                      pcState === 'connected'
+                        ? 'bg-green-100 text-green-800'
+                        : pcState === 'failed' || pcState === 'disconnected' || pcState === 'closed'
+                          ? 'bg-red-100 text-red-800'
+                          : 'bg-amber-100 text-amber-800'
+                    }`}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                    PeerConnection: {pcState}
+                  </span>
+                  <button
+                    onClick={fetchTuyaWebRtcConfig}
+                    className="text-stone-500 hover:text-stone-800 inline-flex items-center gap-1"
+                    title="Configs neu laden"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${webrtcLoading ? 'animate-spin' : ''}`} />
+                    Neu laden
+                  </button>
+                </div>
+              </div>
+
+              {webrtcError && (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800 font-mono break-all">
+                  {webrtcError}
+                </div>
+              )}
+
+              {webrtcConfig && (
+                <div className="grid md:grid-cols-2 gap-3 text-xs">
+                  <div className="rounded-lg border border-stone-100 p-3">
+                    <p className="text-stone-400 mb-1">Device-ID</p>
+                    <p className="font-mono text-stone-800 break-all">{webrtcConfig.id}</p>
+                  </div>
+                  <div className="rounded-lg border border-stone-100 p-3">
+                    <p className="text-stone-400 mb-1">Signaling-Service (moto_id)</p>
+                    <p className="font-mono text-stone-800 break-all">{webrtcConfig.moto_id}</p>
+                  </div>
+                  <div className="rounded-lg border border-stone-100 p-3">
+                    <p className="text-stone-400 mb-1">supports_webrtc</p>
+                    <p className="font-mono text-stone-800">
+                      {webrtcConfig.supports_webrtc ? 'true' : 'false'}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-stone-100 p-3">
+                    <p className="text-stone-400 mb-1">Video-Clarity</p>
+                    <p className="font-mono text-stone-800">{webrtcConfig.vedio_clarity ?? '–'}</p>
+                  </div>
+                  <div className="md:col-span-2 rounded-lg border border-stone-100 p-3">
+                    <p className="text-stone-400 mb-2">
+                      ICE-Server ({webrtcConfig.p2p_config.ices.length})
+                    </p>
+                    <div className="space-y-1">
+                      {webrtcConfig.p2p_config.ices.map((ice, i) => (
+                        <div key={i} className="font-mono text-stone-700 break-all">
+                          <span className="text-stone-400">{i + 1}.</span> {ice.urls}
+                          {ice.ttl && (
+                            <span className="text-stone-400"> · ttl {ice.ttl}s</span>
+                          )}
+                          {ice.username && (
+                            <span className="text-stone-400"> · auth ✓</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="rounded-lg border border-amber-100 bg-amber-50 p-3 text-xs text-amber-900">
+                <p className="font-semibold mb-1">Hinweis: SDP-Signalisierung fehlt noch</p>
+                <p className="text-amber-800">
+                  Configs (ICE, auth, moto_id) sind erfolgreich geladen und die{' '}
+                  <code className="font-mono bg-amber-100 px-1 rounded">RTCPeerConnection</code>{' '}
+                  ist mit den ICE-Servern initialisiert. Für ein laufendes Bild muss der
+                  SDP-Offer noch über Tuyas MQTT-Signaling (Topic via{' '}
+                  <code className="font-mono bg-amber-100 px-1 rounded">moto_id</code>,
+                  Protobuf-Payload) an die Kamera geschickt und die Answer zurückgelesen werden –
+                  entweder via Tuya-IoT-SDK auf einem Edge-Worker, oder als Signaling-Proxy auf
+                  dem lokalen Ubuntu-System.
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Alarm-Banner */}
           {letzteAktivitaet && !letzteAktivitaet.bestaetigt && (
@@ -820,6 +1032,34 @@ export default function StallwachePage() {
               LSC Smart Connect Indoor · LAN-IP: 192.168.178.104 · go2rtc → Cloudflare → HLS
             </p>
             <div className="grid md:grid-cols-2 gap-4">
+              <div className="md:col-span-2">
+                <Label>Stream-Modus</Label>
+                <div className="mt-1 inline-flex rounded-lg border border-stone-200 p-0.5 bg-stone-50">
+                  {(
+                    [
+                      { id: 'hls', label: 'HLS (Tuya Cloud / go2rtc)' },
+                      { id: 'webrtc', label: 'WebRTC (Tuya Cloud P2P)' },
+                    ] as { id: StallwacheStreamMode; label: string }[]
+                  ).map(({ id, label }) => (
+                    <button
+                      key={id}
+                      onClick={() => setConfig({ ...config, streamMode: id })}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                        config.streamMode === id
+                          ? 'bg-white text-stone-900 shadow-sm'
+                          : 'text-stone-500 hover:text-stone-800'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-stone-400 mt-1">
+                  HLS funktioniert sofort über die Tuya-Cloud (~5–10 s Latenz).
+                  WebRTC lädt nur die Configs (ICE-Server, moto_id); die SDP-Aushandlung
+                  läuft bei Tuya über deren MQTT-Signalisierung – siehe Diagnose-Panel.
+                </p>
+              </div>
               <div>
                 <Label>Name der Kamera</Label>
                 <Input

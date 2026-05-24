@@ -252,11 +252,15 @@ export const initialWeiden: Weide[] = [
 //
 // https://github.com/Pulse3000/stallwache-skill
 
+export type StallwacheStreamMode = 'hls' | 'webrtc'
+
 export type StallwacheConfig = {
   enabled: boolean
   apiUrl: string               // Python-Backend API, z.B. http://192.168.178.50:8080
   cameraName: string
   cameraIp: string             // LAN-IP der Kamera (nur zur Info – kein Auth)
+  // Stream-Modus: HLS (Tuya Cloud / go2rtc) oder WebRTC (Tuya Cloud P2P)
+  streamMode: StallwacheStreamMode
   // Stream-URLs: Alle HTTPS, kein Passwort enthalten
   cameraStreamUrlHls: string   // go2rtc HLS via Cloudflare Tunnel
   cameraStreamUrlMjpeg: string // go2rtc MJPEG via Cloudflare Tunnel (Fallback)
@@ -282,6 +286,7 @@ export const defaultStallwacheConfig: StallwacheConfig = {
   apiUrl: 'http://192.168.178.50:8080',
   cameraName: 'Abkalbestall Süd',
   cameraIp: '192.168.178.104',
+  streamMode: 'hls',
   // Keine RTSP-URL, kein Passwort – Konfiguration gehört in go2rtc.yaml auf dem Server
   cameraStreamUrlHls: 'https://stream.stollenhof.de/api/stream.m3u8?src=stallwache',
   cameraStreamUrlMjpeg: 'https://stream.stollenhof.de/api/stream.mjpeg?src=stallwache',
