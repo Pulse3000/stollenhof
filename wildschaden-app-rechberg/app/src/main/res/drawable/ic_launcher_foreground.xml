@@ -1,0 +1,34 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Stilisierter Wildschwein-Kopf in Weiß -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,28
+                          C40,28 30,40 30,54
+                          C30,68 40,80 54,80
+                          C68,80 78,68 78,54
+                          C78,40 68,28 54,28 Z
+                          M54,36
+                          C64,36 70,44 70,54
+                          C70,64 64,72 54,72
+                          C44,72 38,64 38,54
+                          C38,44 44,36 54,36 Z" />
+    <!-- Hauer links -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M42,62 l-4,6 l6,-2 Z" />
+    <!-- Hauer rechts -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M66,62 l4,6 l-6,-2 Z" />
+    <!-- Augen -->
+    <path
+        android:fillColor="#2d6a4f"
+        android:pathData="M46,48 m-2,0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0" />
+    <path
+        android:fillColor="#2d6a4f"
+        android:pathData="M62,48 m-2,0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0" />
+</vector>
