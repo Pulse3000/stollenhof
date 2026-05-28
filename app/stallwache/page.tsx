@@ -47,7 +47,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { StallwacheLiveStream } from '@/components/stallwache-live-stream'
 
 const eventTypeConfig: Record<StallwacheEventTyp, { color: string; icon: typeof Bell }> = {
   'Kalbung erkannt': { color: 'bg-pink-100 text-pink-800 border-pink-200', icon: Baby },
@@ -522,7 +521,121 @@ export default function StallwachePage() {
                 )}
               </div>
             </div>
-            <StallwacheLiveStream />
+
+            {/* Video */}
+            <div
+              ref={previewRef}
+              className="aspect-video bg-stone-950 relative flex items-center justify-center text-stone-500"
+            >
+              {config.enabled ? (
+                <>
+                  {/* Tuya-URL wird geladen */}
+                  {tuyaLoading && !tuyaUrl && (
+                    <div className="text-center">
+                      <RefreshCw className="w-8 h-8 mx-auto mb-3 text-stone-600 animate-spin" />
+                      <p className="text-sm text-stone-500">Stream-URL wird von Tuya Cloud geladen…</p>
+                    </div>
+                  )}
+
+                  {/* Tuya API-Fehler */}
+                  {tuyaError && !tuyaUrl && (
+                    <div className="text-center px-6 max-w-sm">
+                      <AlertTriangle className="w-10 h-10 mx-auto mb-3 text-red-700/60" />
+                      <p className="text-sm font-medium text-stone-300 mb-1">Tuya API nicht erreichbar</p>
+                      <p className="text-xs text-stone-600 font-mono break-all mb-3">{tuyaError}</p>
+                      <p className="text-xs text-stone-600 mb-4">
+                        Credentials in <code className="text-stone-500">.env.local</code> prüfen
+                        und Server neu starten.
+                      </p>
+                      <button
+                        onClick={fetchTuyaStreamUrl}
+                        className="text-xs text-stone-300 hover:text-white border border-stone-700 hover:border-stone-500 px-4 py-2 rounded-lg transition-colors"
+                      >
+                        Erneut versuchen
+                      </button>
+                    </div>
+                  )}
+
+                  {/* HLS-Video */}
+                  {activeStreamUrl && !streamError && (
+                    <>
+                      <video
+                        ref={videoRef}
+                        key={streamKey}
+                        className="absolute inset-0 w-full h-full object-contain"
+                        autoPlay
+                        muted
+                        playsInline
+                        controls
+                      >
+                        Stream wird geladen oder Browser nicht unterstützt.
+                      </video>
+                      <div className="absolute bottom-3 right-3 bg-stone-900/70 text-stone-400 text-[10px] px-2 py-1 rounded font-mono pointer-events-none">
+                        {tuyaUrl ? 'HLS · Tuya Cloud CDN' : 'HLS · go2rtc via Cloudflare'}
+                      </div>
+                    </>
+                  )}
+
+                  {/* HLS-Fehler */}
+                  {activeStreamUrl && streamError && (
+                    <div className="text-center px-6 max-w-sm">
+                      <Camera className="w-10 h-10 mx-auto mb-3 text-stone-600" />
+                      <p className="text-sm font-medium text-stone-300 mb-1">Stream unterbrochen</p>
+                      {reconnectAttempt < 5 ? (
+                        <p className="text-xs text-amber-500 flex items-center justify-center gap-1.5 mb-3">
+                          <RefreshCw className="w-3 h-3 animate-spin" />
+                          Neue URL wird geholt… ({reconnectAttempt + 1}/5)
+                        </p>
+                      ) : (
+                        <p className="text-xs text-stone-600 mb-3">
+                          Tuya Cloud erreichbar? ONVIF aktiviert?
+                        </p>
+                      )}
+                      <button
+                        onClick={manualReconnect}
+                        className="text-xs text-stone-300 hover:text-white border border-stone-700 hover:border-stone-500 px-4 py-2 rounded-lg transition-colors"
+                      >
+                        Neu verbinden
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Noch keine URL und kein Fehler */}
+                  {!tuyaLoading && !tuyaError && !activeStreamUrl && (
+                    <div className="text-center">
+                      <Camera className="w-10 h-10 mx-auto mb-3 text-stone-700" />
+                      <p className="text-sm text-stone-500">Kein Stream konfiguriert</p>
+                      <button
+                        onClick={() => setTab('config')}
+                        className="mt-3 text-xs text-stone-400 hover:text-white underline"
+                      >
+                        HLS-Fallback-URL eintragen →
+                      </button>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="text-center">
+                  <WifiOff className="w-10 h-10 mx-auto mb-3 text-stone-700" />
+                  <p className="text-sm text-stone-500">System gestoppt</p>
+                  <p className="text-xs text-stone-600 mt-1">
+                    Oben auf <strong className="text-stone-400">„Starten"</strong> klicken
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Status-Bar unten */}
+            <div className="px-4 py-2.5 bg-stone-900/60 flex items-center justify-between text-xs text-stone-500">
+              <div className="flex items-center gap-4">
+                <span className="flex items-center gap-1.5">
+                  <span className={`w-1.5 h-1.5 rounded-full ${config.enabled && status.online ? 'bg-green-500' : 'bg-stone-600'}`} />
+                  {config.enabled && status.online ? 'Online' : 'Offline'}
+                </span>
+                <span>Laufzeit: {config.enabled ? formatUptime(status.uptimeSekunden) : '–'}</span>
+              </div>
+              <span className="font-mono">{config.go2rtcPublicUrl || '–'}</span>
+            </div>
           </div>
 
           {/* Alarm-Banner */}
