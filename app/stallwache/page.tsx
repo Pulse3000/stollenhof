@@ -44,6 +44,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { StallwacheLiveStream } from '@/components/stallwache-live-stream'
 
 const eventTypeConfig: Record<StallwacheEventTyp, { color: string; icon: typeof Bell }> = {
   'Kalbung erkannt': { color: 'bg-pink-100 text-pink-800 border-pink-200', icon: Baby },
@@ -346,43 +347,7 @@ export default function StallwachePage() {
               </div>
               <span className="text-xs text-stone-400">{config.cameraName}</span>
             </div>
-            <div className="aspect-video bg-stone-950 relative flex items-center justify-center text-stone-400">
-              {config.enabled ? (
-                <>
-                  <div className="absolute top-3 left-3 flex items-center gap-2 bg-red-600/90 text-white px-2 py-1 rounded text-xs font-semibold">
-                    <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
-                    LIVE
-                  </div>
-                  <div className="absolute top-3 right-3 bg-black/60 text-white px-2 py-1 rounded text-xs font-mono">
-                    {status.fps.toFixed(1)} FPS · 1280×720
-                  </div>
-                  <div className="text-center">
-                    <Camera className="w-12 h-12 mx-auto mb-2 opacity-40" />
-                    <p className="text-sm opacity-70">HTTP-Stream</p>
-                    <p className="text-xs opacity-50 font-mono mt-1 break-all px-4">
-                      {config.cameraStreamUrl.replace(/user=[^&]+&pwd=[^&]+/, 'user=****&pwd=****')}
-                    </p>
-                    <p className="text-xs opacity-50 mt-3">
-                      (Bild-Stream verfügbar wenn Python-Backend per HTTP-Bridge angebunden ist)
-                    </p>
-                  </div>
-                  {/* Demo-Detection-Box */}
-                  <div className="absolute inset-0 pointer-events-none">
-                    <div className="absolute top-[35%] left-[40%] w-[25%] h-[35%] border-2 border-green-400 rounded">
-                      <div className="absolute -top-6 left-0 bg-green-500 text-white text-[10px] px-1.5 py-0.5 rounded font-mono">
-                        cow · 0.91
-                      </div>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <div className="text-center">
-                  <WifiOff className="w-12 h-12 mx-auto mb-2 opacity-40" />
-                  <p className="text-sm">System gestoppt</p>
-                  <p className="text-xs opacity-60 mt-1">Klicke auf "Starten" um den Stream zu aktivieren</p>
-                </div>
-              )}
-            </div>
+            <StallwacheLiveStream />
           </div>
 
           {/* Letzte Ereignisse */}
