@@ -68,44 +68,6 @@ export interface TuyaStreamResult {
   expiresAt: number // Unix-ms wann die URL abläuft
 }
 
-// ---------- WebRTC ----------
-// Tuya WebRTC: GET /v1.0/devices/{device_id}/webrtc-configs
-// Liefert ICE-Server, Auth-Token und Signaling-Service-ID (moto_id).
-// Die eigentliche SDP-Aushandlung läuft über Tuyas MQTT-Signalisierung
-// (separater Schritt, nicht Teil dieser Funktion).
-export interface TuyaIceServer {
-  urls: string
-  username?: string
-  credential?: string
-  ttl?: number
-}
-
-export interface TuyaWebRtcConfig {
-  id: string
-  supports_webrtc: boolean
-  auth: string
-  moto_id: string
-  skill: string
-  vedio_clarity?: number
-  p2p_config: { ices: TuyaIceServer[] }
-  audio_attributes?: { call_mode?: number[]; hardware_capability?: number[] }
-}
-
-export async function getWebRtcConfig(deviceId: string): Promise<TuyaWebRtcConfig> {
-  const token = await getAccessToken()
-  const path = `/v1.0/devices/${deviceId}/webrtc-configs`
-  const res = await fetch(`${BASE}${path}`, {
-    method: 'GET',
-    headers: buildHeaders('GET', path, '', token),
-    cache: 'no-store',
-  })
-  if (!res.ok) throw new Error(`Tuya webrtc-configs HTTP ${res.status}`)
-  const data: { success: boolean; msg?: string; result?: TuyaWebRtcConfig } = await res.json()
-  if (!data.success) throw new Error(`Tuya webrtc-configs error: ${data.msg ?? 'unknown'}`)
-  if (!data.result) throw new Error('Tuya webrtc-configs: kein result')
-  return data.result
-}
-
 // Stream-URL von der Tuya Cloud anfordern (HLS).
 // Die URL ist ~30 Minuten gültig – Frontend muss rechtzeitig erneut anfragen.
 export async function allocateStream(deviceId: string): Promise<TuyaStreamResult> {
