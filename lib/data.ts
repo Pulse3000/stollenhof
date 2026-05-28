@@ -241,22 +241,34 @@ export const initialWeiden: Weide[] = [
 
 // ---------- Stallwache (KI-Kalbungswache) ----------
 // Web-Dashboard für das stallwache-skill Python-Backend
-// (YOLOv8 + HTTP-Stream-Kamera + Telegram-Alerts)
-// Kamera: Rollei SafetyCam HD 20 – HTTP ASF/CGI-Stream (kein RTSP)
+// (YOLOv8 + RTSP-Kamera via go2rtc + Cloudflare Tunnel + Telegram-Alerts)
+// Kamera: LSC Smart Connect Indoor IP Camera (Tuya-basiert)
+//   LAN-IP: 192.168.178.104  |  MAC: 8C:5C:53:A6:94:FB
+//   Device-ID: bfd872a00d4e8fc02bkiua
+//
+// SICHERHEIT: RTSP-Zugangsdaten (URL + Passwort) gehören NICHT ins Frontend.
+//   Sie werden ausschließlich in go2rtc.yaml auf dem lokalen Server konfiguriert.
+//   Das Frontend speichert nur HTTPS-URLs ohne Authentifizierungsdaten.
+//
 // https://github.com/Pulse3000/stallwache-skill
 
 export type StallwacheConfig = {
   enabled: boolean
-  apiUrl: string // z.B. http://192.168.178.50:8080
+  apiUrl: string               // Python-Backend API, z.B. http://192.168.178.50:8080
   cameraName: string
-  cameraStreamUrl: string   // primärer HTTP-Stream (ASF)
-  cameraStreamUrlMjpeg: string // MJPEG-Fallback (CGI)
-  cameraStreamUrlDdns: string  // externer Zugang via DDNS
-  cameraUser: string
+  cameraIp: string             // LAN-IP der Kamera (nur zur Info – kein Auth)
+  // Stream-URLs: Alle HTTPS, kein Passwort enthalten
+  cameraStreamUrlHls: string   // go2rtc HLS via Cloudflare Tunnel
+  cameraStreamUrlMjpeg: string // go2rtc MJPEG via Cloudflare Tunnel (Fallback)
+  go2rtcUrl: string            // Lokale go2rtc Base-URL (kein Auth)
+  go2rtcPublicUrl: string      // Cloudflare-Tunnel-URL (kein Auth)
+  go2rtcStreamName: string     // Stream-Name in go2rtc.yaml
+  // KI-Modell
   modelPath: string
-  confidenceThreshold: number // 0..1
-  iouThreshold: number // 0..1
+  confidenceThreshold: number
+  iouThreshold: number
   device: 'cpu' | 'cuda' | 'mps'
+  // Telegram
   telegramEnabled: boolean
   telegramBotToken: string
   telegramChatId: string
@@ -269,10 +281,13 @@ export const defaultStallwacheConfig: StallwacheConfig = {
   enabled: false,
   apiUrl: 'http://192.168.178.50:8080',
   cameraName: 'Abkalbestall Süd',
-  cameraStreamUrl: 'http://192.168.178.108/videostream.asf?user=Stallwache123!&pwd=Stallwache123!&resolution=1280x720',
-  cameraStreamUrlMjpeg: 'http://192.168.178.108/videostream.cgi?user=Stallwache123!&pwd=Stallwache123!&resolution=8',
-  cameraStreamUrlDdns: '',
-  cameraUser: 'Stallwache123!',
+  cameraIp: '192.168.178.104',
+  // Keine RTSP-URL, kein Passwort – Konfiguration gehört in go2rtc.yaml auf dem Server
+  cameraStreamUrlHls: 'https://stream.stollenhof.de/api/stream.m3u8?src=stallwache',
+  cameraStreamUrlMjpeg: 'https://stream.stollenhof.de/api/stream.mjpeg?src=stallwache',
+  go2rtcUrl: 'http://192.168.178.50:1984',
+  go2rtcPublicUrl: 'https://stream.stollenhof.de',
+  go2rtcStreamName: 'stallwache',
   modelPath: './models/yolov8n.pt',
   confidenceThreshold: 0.3,
   iouThreshold: 0.45,
@@ -307,7 +322,7 @@ export const initialStallwacheEvents: StallwacheEvent[] = [
   { id: 1, zeitstempel: '2026-05-10T04:18:42', typ: 'Aktivität', konfidenz: 0.71, beschreibung: 'Erhöhte Bewegung in Abkalbebox – Kuh ist unruhig', kuhNr: 2, bestaetigt: false },
   { id: 2, zeitstempel: '2026-05-09T22:14:08', typ: 'Telegram-Alert', beschreibung: 'Alarm an Hans Schabel gesendet (Bewegungsmuster verdächtig)', kuhNr: 2, bestaetigt: true },
   { id: 3, zeitstempel: '2026-05-09T22:13:51', typ: 'Aktivität', konfidenz: 0.68, beschreibung: 'Wiederkehrende Bewegung Box 2, mehrere Aufstehphasen', kuhNr: 2, bestaetigt: true },
-  { id: 4, zeitstempel: '2026-05-09T06:02:00', typ: 'System gestartet', beschreibung: 'HTTP-Stream verbunden (ASF lokal), YOLOv8n geladen (Device: CPU)', bestaetigt: true },
+  { id: 4, zeitstempel: '2026-05-09T06:02:00', typ: 'System gestartet', beschreibung: 'RTSP-Stream verbunden (go2rtc · 192.168.178.104:554), YOLOv8n geladen (Device: CPU)', bestaetigt: true },
   { id: 5, zeitstempel: '2026-04-26T03:47:12', typ: 'Kalbung erkannt', konfidenz: 0.92, beschreibung: 'Kalbung erfolgreich erkannt – Kalb sichtbar auf Frame', kuhNr: 26, bestaetigt: true },
   { id: 6, zeitstempel: '2026-04-26T03:47:14', typ: 'Telegram-Alert', beschreibung: 'Alarm gesendet (Anna · 03:47 Uhr · 92 % Konfidenz)', kuhNr: 26, bestaetigt: true },
   { id: 7, zeitstempel: '2026-04-08T01:22:55', typ: 'Kalbung erkannt', konfidenz: 0.88, beschreibung: 'Kalbung erkannt – nachts in Box 1', kuhNr: 11, bestaetigt: true },

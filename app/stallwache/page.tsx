@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
+import type Hls from 'hls.js'
 import {
   Camera,
   Cpu,
@@ -22,6 +23,8 @@ import {
   Power,
   Github,
   RefreshCw,
+  Maximize2,
+  ExternalLink,
 } from 'lucide-react'
 import { usePersistedState } from '@/lib/use-persisted-state'
 import {
@@ -85,6 +88,130 @@ export default function StallwachePage() {
   const [eventOpen, setEventOpen] = useState(false)
   const [editId, setEditId] = useState<number | null>(null)
   const [form, setForm] = useState<Omit<StallwacheEvent, 'id'>>(emptyEvent())
+  const [streamError, setStreamError] = useState(false)
+  const [streamKey, setStreamKey] = useState(0)
+  const [reconnectAttempt, setReconnectAttempt] = useState(0)
+  // Tuya-Stream: URL und Ablaufzeitpunkt (aus /api/get-stream)
+  const [tuyaUrl, setTuyaUrl] = useState<string | null>(null)
+  const [tuyaLoading, setTuyaLoading] = useState(false)
+  const [tuyaError, setTuyaError] = useState<string | null>(null)
+  const previewRef = useRef<HTMLDivElement>(null)
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const hlsRef = useRef<Hls | null>(null)
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Tuya-Stream-URL von der API-Route holen
+  async function fetchTuyaStreamUrl() {
+    setTuyaLoading(true)
+    setTuyaError(null)
+    try {
+      const res = await fetch('/api/get-stream', { cache: 'no-store' })
+      const data: { url?: string; expiresAt?: number; error?: string } = await res.json()
+      if (!res.ok || !data.url) throw new Error(data.error ?? `HTTP ${res.status}`)
+      setTuyaUrl(data.url)
+      setStreamError(false)
+      setStreamKey((k) => k + 1)
+      // Auto-Refresh kurz vor Ablauf (expiresAt minus 2 Minuten Puffer)
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
+      const ttl = (data.expiresAt ?? Date.now() + 28 * 60 * 1000) - Date.now() - 2 * 60 * 1000
+      if (ttl > 0) {
+        refreshTimerRef.current = setTimeout(fetchTuyaStreamUrl, ttl)
+      }
+    } catch (err) {
+      setTuyaError(err instanceof Error ? err.message : 'Unbekannter Fehler')
+    } finally {
+      setTuyaLoading(false)
+    }
+  }
+
+  // Stream-URL laden wenn System gestartet wird
+  useEffect(() => {
+    if (!config.enabled) {
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
+      setTuyaUrl(null)
+      return
+    }
+    fetchTuyaStreamUrl()
+    return () => {
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config.enabled])
+
+  // HLS-Player anhängen – Quelle: tuyaUrl (API) oder config.cameraStreamUrlHls (Fallback)
+  const activeStreamUrl = tuyaUrl ?? config.cameraStreamUrlHls
+
+  // HLS-Player anhängen (hls.js für Chrome/Firefox, natives HLS für Safari/iOS)
+  useEffect(() => {
+    if (!config.enabled || !activeStreamUrl) return
+    const video = videoRef.current
+    if (!video) return
+
+    let cancelled = false
+    let hls: Hls | null = null
+
+    const attach = async () => {
+      if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = activeStreamUrl
+        video.play().catch(() => {})
+        return
+      }
+      const HlsModule = (await import('hls.js')).default
+      if (cancelled) return
+      if (!HlsModule.isSupported()) { setStreamError(true); return }
+      hls = new HlsModule({ lowLatencyMode: true, liveSyncDuration: 2, maxLiveSyncPlaybackRate: 1.5 })
+      hlsRef.current = hls
+      hls.loadSource(activeStreamUrl)
+      hls.attachMedia(video)
+      hls.on(HlsModule.Events.MANIFEST_PARSED, () => {
+        video.play().catch(() => {})
+        setReconnectAttempt(0)
+      })
+      hls.on(HlsModule.Events.ERROR, (_event, data) => {
+        if (data.fatal) setStreamError(true)
+      })
+    }
+    attach()
+
+    return () => {
+      cancelled = true
+      if (hls) { hls.destroy(); hlsRef.current = null }
+      video.removeAttribute('src')
+      video.load()
+    }
+  }, [config.enabled, activeStreamUrl, streamKey])
+
+  // Auto-reconnect (Exponential Backoff): nach hls.js-Fehler neue URL holen (Token könnte abgelaufen sein)
+  useEffect(() => {
+    if (!streamError || !config.enabled || !activeStreamUrl) return
+    if (reconnectAttempt >= 5) return
+    const delayMs = 2000 * Math.pow(2, reconnectAttempt)
+    reconnectTimerRef.current = setTimeout(() => {
+      // Neue Tuya-URL anfordern statt dieselbe nochmal zu versuchen
+      fetchTuyaStreamUrl()
+      setReconnectAttempt((n) => n + 1)
+    }, delayMs)
+    return () => { if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [streamError, reconnectAttempt, config.enabled, activeStreamUrl])
+
+  function manualReconnect() {
+    if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
+    setStreamError(false)
+    setReconnectAttempt(0)
+    fetchTuyaStreamUrl()
+  }
+
+  function toggleFullscreen() {
+    const el = previewRef.current
+    if (!el) return
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {})
+    } else {
+      el.requestFullscreen().catch(() => {})
+    }
+  }
 
   const sortedEvents = [...events].sort((a, b) => b.zeitstempel.localeCompare(a.zeitstempel))
   const todayEvents = events.filter((e) => e.zeitstempel.slice(0, 10) === TODAY_ISO)
@@ -145,6 +272,10 @@ export default function StallwachePage() {
   }
 
   function toggleSystem() {
+    if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
+    setStreamError(false)
+    setStreamKey((k) => k + 1)
+    setReconnectAttempt(0)
     setConfig({ ...config, enabled: !config.enabled })
     const newId = Math.max(0, ...events.map((e) => e.id)) + 1
     const event: StallwacheEvent = {
@@ -169,7 +300,7 @@ export default function StallwachePage() {
             Stallwache
           </h1>
           <p className="text-stone-500 mt-0.5 text-sm">
-            KI-Kalbungswache · YOLOv8 + HTTP-Stream + Telegram-Alerts
+            KI-Kalbungswache · YOLOv8 + RTSP via go2rtc + Telegram-Alerts
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -337,18 +468,80 @@ export default function StallwachePage() {
 
       {/* TAB: Live */}
       {tab === 'live' && (
-        <div className="space-y-6">
-          {/* Kamera-Preview */}
-          <div className="bg-white rounded-xl border border-stone-200 overflow-hidden">
-            <div className="px-6 py-4 border-b border-stone-100 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Camera className="w-4 h-4 text-stone-500" />
-                <h2 className="font-semibold text-stone-900">Kamera-Vorschau</h2>
+        <div className="space-y-4">
+          {/* Kamera-Player */}
+          <div className="rounded-2xl overflow-hidden bg-stone-950 shadow-xl">
+            {/* Toolbar */}
+            <div className="px-4 py-3 bg-stone-900/80 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2.5">
+                {config.enabled && (
+                  <span className="flex items-center gap-1.5 text-xs font-bold text-white bg-red-600 px-2.5 py-1 rounded-full">
+                    <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                    LIVE
+                  </span>
+                )}
+                <span className="text-stone-300 text-sm font-medium">{config.cameraName}</span>
+                {config.enabled && (
+                  <span className="text-stone-500 text-xs font-mono">
+                    {status.fps.toFixed(1)} fps
+                  </span>
+                )}
               </div>
-              <span className="text-xs text-stone-400">{config.cameraName}</span>
+              <div className="flex items-center gap-0.5">
+                {tuyaLoading && (
+                  <span className="text-xs text-stone-500 flex items-center gap-1 mr-2">
+                    <RefreshCw className="w-3 h-3 animate-spin" /> Tuya…
+                  </span>
+                )}
+                {config.enabled && (activeStreamUrl || config.cameraStreamUrlHls) && (
+                  <>
+                    <button
+                      onClick={manualReconnect}
+                      className="p-2 rounded-lg hover:bg-stone-700/60 text-stone-400 hover:text-white transition-colors"
+                      title="Neu verbinden"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={toggleFullscreen}
+                      className="p-2 rounded-lg hover:bg-stone-700/60 text-stone-400 hover:text-white transition-colors"
+                      title="Vollbild"
+                    >
+                      <Maximize2 className="w-4 h-4" />
+                    </button>
+                    <a
+                      href={config.cameraStreamUrlHls}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-2 rounded-lg hover:bg-stone-700/60 text-stone-400 hover:text-white transition-colors"
+                      title="In neuem Tab öffnen"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                    </a>
+                  </>
+                )}
+              </div>
             </div>
             <StallwacheLiveStream />
           </div>
+
+          {/* Alarm-Banner */}
+          {letzteAktivitaet && !letzteAktivitaet.bestaetigt && (
+            <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="font-semibold text-amber-900">Neue Aktivität: {letzteAktivitaet.typ}</p>
+                <p className="text-sm text-amber-800 mt-0.5">{letzteAktivitaet.beschreibung}</p>
+                <p className="text-xs text-amber-700 mt-1">{formatDateTime(letzteAktivitaet.zeitstempel)}</p>
+              </div>
+              <button
+                onClick={() => toggleAck(letzteAktivitaet.id)}
+                className="px-3 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-800 text-white text-xs font-medium shrink-0"
+              >
+                Bestätigen
+              </button>
+            </div>
+          )}
 
           {/* Letzte Ereignisse */}
           <div className="bg-white rounded-xl border border-stone-200">
@@ -397,26 +590,6 @@ export default function StallwachePage() {
               </div>
             )}
           </div>
-
-          {/* Letzte Aktivität / Banner */}
-          {letzteAktivitaet && !letzteAktivitaet.bestaetigt && (
-            <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 flex items-start gap-3">
-              <AlertTriangle className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
-              <div className="flex-1">
-                <p className="font-semibold text-amber-900">
-                  Neue Aktivität: {letzteAktivitaet.typ}
-                </p>
-                <p className="text-sm text-amber-800 mt-0.5">{letzteAktivitaet.beschreibung}</p>
-                <p className="text-xs text-amber-700 mt-1">{formatDateTime(letzteAktivitaet.zeitstempel)}</p>
-              </div>
-              <button
-                onClick={() => toggleAck(letzteAktivitaet.id)}
-                className="px-3 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-800 text-white text-xs font-medium shrink-0"
-              >
-                Bestätigen
-              </button>
-            </div>
-          )}
         </div>
       )}
 
@@ -510,11 +683,29 @@ export default function StallwachePage() {
       {/* TAB: Konfiguration */}
       {tab === 'config' && (
         <div className="space-y-6">
+          {/* Security-Hinweis */}
+          <div className="rounded-xl border border-green-200 bg-green-50 p-4 flex items-start gap-3">
+            <div className="shrink-0 mt-0.5 w-5 h-5 rounded-full bg-green-600 flex items-center justify-center">
+              <svg viewBox="0 0 16 16" fill="white" className="w-3 h-3"><path d="M8 1a5 5 0 0 1 5 5v1.5a1.5 1.5 0 0 1 1.5 1.5v4A1.5 1.5 0 0 1 13 14.5H3A1.5 1.5 0 0 1 1.5 13V9A1.5 1.5 0 0 1 3 7.5V6a5 5 0 0 1 5-5zm0 1a4 4 0 0 0-4 4v1.5h8V6a4 4 0 0 0-4-4zm0 7a1 1 0 1 0 0 2 1 1 0 0 0 0-2z"/></svg>
+            </div>
+            <div>
+              <p className="font-semibold text-green-900 text-sm">Keine Passwörter im Frontend</p>
+              <p className="text-xs text-green-800 mt-0.5">
+                RTSP-URL und ONVIF-Passwort werden <strong>nicht</strong> hier konfiguriert –
+                sie gehören ausschließlich in <code className="font-mono bg-green-100 px-1 rounded">go2rtc.yaml</code> auf
+                dem lokalen Server. Das Dashboard speichert nur passwortfreie HTTPS-URLs (Cloudflare Tunnel).
+              </p>
+            </div>
+          </div>
+
           {/* Kamera */}
           <div className="bg-white rounded-xl border border-stone-200 p-6">
-            <h2 className="font-semibold text-stone-900 mb-4 flex items-center gap-2">
-              <Camera className="w-4 h-4 text-stone-500" /> Kamera (HTTP-Stream)
+            <h2 className="font-semibold text-stone-900 mb-1 flex items-center gap-2">
+              <Camera className="w-4 h-4 text-stone-500" /> Kamera & Stream-Endpunkte
             </h2>
+            <p className="text-xs text-stone-400 mb-4">
+              LSC Smart Connect Indoor · LAN-IP: 192.168.178.104 · go2rtc → Cloudflare → HLS
+            </p>
             <div className="grid md:grid-cols-2 gap-4">
               <div>
                 <Label>Name der Kamera</Label>
@@ -525,53 +716,58 @@ export default function StallwachePage() {
                 />
               </div>
               <div>
-                <Label>Kamera-Passwort</Label>
-                <Input
-                  type="password"
-                  className="mt-1 font-mono text-sm"
-                  value={config.cameraUser}
-                  onChange={(e) => setConfig({ ...config, cameraUser: e.target.value })}
-                  placeholder="Stallwache123!"
-                />
-              </div>
-              <div className="md:col-span-2">
-                <Label>Stream-URL (primär · ASF lokal)</Label>
+                <Label>go2rtc Stream-Name</Label>
                 <Input
                   className="mt-1 font-mono text-sm"
-                  value={config.cameraStreamUrl}
-                  onChange={(e) => setConfig({ ...config, cameraStreamUrl: e.target.value })}
-                  placeholder="http://192.168.178.108/videostream.asf?user=...&pwd=...&resolution=1280x720"
+                  value={config.go2rtcStreamName}
+                  onChange={(e) => setConfig({ ...config, go2rtcStreamName: e.target.value })}
+                  placeholder="stallwache"
                 />
                 <p className="text-xs text-stone-400 mt-1">
-                  Rollei SafetyCam HD 20 · HTTP ASF-Stream (kein RTSP). Lokal bevorzugt.
+                  Muss mit dem Schlüssel in <code>go2rtc.yaml → streams:</code> übereinstimmen.
                 </p>
               </div>
               <div className="md:col-span-2">
-                <Label>MJPEG-URL (Fallback · CGI)</Label>
+                <Label>HLS-URL (Browser · primär)</Label>
+                <Input
+                  className="mt-1 font-mono text-sm"
+                  value={config.cameraStreamUrlHls}
+                  onChange={(e) => setConfig({ ...config, cameraStreamUrlHls: e.target.value })}
+                  placeholder="https://stream.stollenhof.de/api/stream.m3u8?src=stallwache"
+                />
+                <p className="text-xs text-stone-400 mt-1">
+                  go2rtc-HLS via Cloudflare Tunnel – HTTPS, kein Passwort in der URL.
+                  Format: <code className="bg-stone-100 px-1 rounded">https://&lt;tunnel&gt;/api/stream.m3u8?src=&lt;name&gt;</code>
+                </p>
+              </div>
+              <div className="md:col-span-2">
+                <Label>MJPEG-URL (Fallback, optional)</Label>
                 <Input
                   className="mt-1 font-mono text-sm"
                   value={config.cameraStreamUrlMjpeg}
                   onChange={(e) => setConfig({ ...config, cameraStreamUrlMjpeg: e.target.value })}
-                  placeholder="http://192.168.178.108/videostream.cgi?user=...&pwd=...&resolution=8"
+                  placeholder="https://stream.stollenhof.de/api/stream.mjpeg?src=stallwache"
                 />
-                <p className="text-xs text-stone-400 mt-1">
-                  Wird verwendet wenn der ASF-Stream nicht erreichbar ist.
-                </p>
               </div>
-              <div className="md:col-span-2">
-                <Label>Externe URL (optional)</Label>
+              <div>
+                <Label>go2rtc Local-URL</Label>
                 <Input
                   className="mt-1 font-mono text-sm"
-                  value={config.cameraStreamUrlDdns}
-                  onChange={(e) => setConfig({ ...config, cameraStreamUrlDdns: e.target.value })}
-                  placeholder="leer lassen wenn Backend im LAN läuft"
+                  value={config.go2rtcUrl}
+                  onChange={(e) => setConfig({ ...config, go2rtcUrl: e.target.value })}
+                  placeholder="http://192.168.178.50:1984"
                 />
-                <p className="text-xs text-stone-400 mt-1">
-                  Nur ausfüllen wenn das Python-Backend nicht im selben Netzwerk wie die Kamera läuft –
-                  z.B. via VPN (Tailscale/WireGuard) oder Port-Forwarding über eine eigene DDNS
-                  (duckdns.org, no-ip.com). Die Rollei-Cloud (rolleicam.net / megracloud.net) eignet
-                  sich nicht – sie ist ein Auth-Relay nur für den Browser-Viewer.
-                </p>
+                <p className="text-xs text-stone-400 mt-1">Für das Python-Backend im LAN.</p>
+              </div>
+              <div>
+                <Label>go2rtc Public-URL (Cloudflare)</Label>
+                <Input
+                  className="mt-1 font-mono text-sm"
+                  value={config.go2rtcPublicUrl}
+                  onChange={(e) => setConfig({ ...config, go2rtcPublicUrl: e.target.value })}
+                  placeholder="https://stream.stollenhof.de"
+                />
+                <p className="text-xs text-stone-400 mt-1">HTTPS-Endpunkt via Cloudflare Tunnel.</p>
               </div>
             </div>
           </div>
@@ -740,83 +936,188 @@ export default function StallwachePage() {
       {/* TAB: Setup */}
       {tab === 'setup' && (
         <div className="space-y-6">
+
+          {/* Schritt 1: ONVIF aktivieren */}
           <div className="bg-white rounded-xl border border-stone-200 p-6 space-y-4">
             <h2 className="font-semibold text-stone-900 flex items-center gap-2">
-              <Cpu className="w-4 h-4 text-stone-500" /> Python-Backend einrichten
+              <Camera className="w-4 h-4 text-stone-500" /> Schritt 1 – ONVIF in der LSC-App aktivieren
             </h2>
             <p className="text-sm text-stone-600">
-              Das Backend läuft typischerweise auf einem Raspberry Pi 4/5, einem Mini-PC oder direkt
-              am Hof-Server. Es liest den HTTP-Stream der Rollei SafetyCam HD 20, führt die YOLOv8n-Inferenz aus und
-              schickt bei Kalbungs-Verdacht Telegram-Alerts.
+              Die LSC Smart Connect Indoor Camera liefert RTSP nur, wenn ONVIF aktiviert wurde:
             </p>
+            <ol className="list-decimal pl-5 text-sm text-stone-600 space-y-1.5">
+              <li>In der <strong>LSC Smart Connect</strong> App die Kamera öffnen</li>
+              <li>Einstellungen → <strong>„PC-Ansicht"</strong> / <strong>„ONVIF"</strong></li>
+              <li>Benutzer auf <code className="font-mono text-xs bg-stone-100 px-1 rounded">admin</code>, Passwort frei wählen</li>
+              <li>Speichern und in der Stallwache unter <strong>Konfiguration → ONVIF-Benutzer</strong> hinterlegen</li>
+            </ol>
+            <div className="rounded-lg border border-stone-200 p-4">
+              <p className="font-semibold text-stone-900 mb-2">Mit VLC testen (Mac/Win/Linux)</p>
+              <pre className="bg-stone-900 text-stone-100 rounded p-3 overflow-x-auto text-xs font-mono">
+                vlc rtsp://admin:DEIN_ONVIF_PASSWORT@192.168.178.104:554/live/ch0
+              </pre>
+              <p className="text-xs text-stone-500 mt-2">
+                LSC/Tuya-Standardpfad: <code>/live/ch0</code>. Falls kein Bild → andere Pfade probieren:
+                <code className="ml-1">/onvif1</code>, <code>/stream1</code>, <code>/cam/realmonitor?channel=1&subtype=0</code>.
+              </p>
+            </div>
+          </div>
 
+          {/* Schritt 2: go2rtc */}
+          <div className="bg-white rounded-xl border border-stone-200 p-6 space-y-4">
+            <h2 className="font-semibold text-stone-900 flex items-center gap-2">
+              <Cpu className="w-4 h-4 text-stone-500" /> Schritt 2 – go2rtc (RTSP → HLS-Bridge)
+            </h2>
+            <p className="text-sm text-stone-600">
+              go2rtc wandelt RTSP in HLS / WebRTC / MJPEG um. Empfohlen via <strong>Docker</strong> auf dem
+              Ubuntu-System – läuft permanent, auto-restart.
+            </p>
             <div className="space-y-3 text-sm">
               <div className="rounded-lg border border-stone-200 p-4">
-                <p className="font-semibold text-stone-900 mb-2">1. Repository klonen</p>
-                <pre className="bg-stone-900 text-stone-100 rounded p-3 overflow-x-auto text-xs font-mono">
-                  git clone https://github.com/Pulse3000/stallwache-skill.git{'\n'}
-                  cd stallwache-skill
+                <p className="font-semibold text-stone-900 mb-2">go2rtc.yaml erstellen</p>
+                <pre className="bg-stone-900 text-stone-100 rounded p-3 overflow-x-auto text-xs font-mono leading-relaxed">
+{`streams:
+  stallwache:
+    # Passwort vorher in LSC-App unter "PC-Ansicht/ONVIF" setzen
+    - rtsp://admin:DEIN_ONVIF_PASSWORT@192.168.178.104:554/live/ch0
+
+api:
+  listen: ":1984"
+
+rtsp:
+  listen: ":8554"
+
+webrtc:
+  candidates:
+    - stun:8555`}
                 </pre>
               </div>
-
               <div className="rounded-lg border border-stone-200 p-4">
-                <p className="font-semibold text-stone-900 mb-2">2. Konfiguration kopieren</p>
-                <pre className="bg-stone-900 text-stone-100 rounded p-3 overflow-x-auto text-xs font-mono">
-                  cp .env.example .env{'\n'}
-                  # CAMERA_STREAM_URL, TELEGRAM_BOT_TOKEN und{'\n'}
-                  # TELEGRAM_CHAT_ID anpassen
+                <p className="font-semibold text-stone-900 mb-2">Docker-Compose (empfohlen)</p>
+                <pre className="bg-stone-900 text-stone-100 rounded p-3 overflow-x-auto text-xs font-mono leading-relaxed">
+{`# docker-compose.yml
+services:
+  go2rtc:
+    image: alexxit/go2rtc
+    container_name: go2rtc
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - ./go2rtc.yaml:/config/go2rtc.yaml:ro`}
                 </pre>
-              </div>
-
-              <div className="rounded-lg border border-stone-200 p-4">
-                <p className="font-semibold text-stone-900 mb-2">3. Container starten</p>
-                <pre className="bg-stone-900 text-stone-100 rounded p-3 overflow-x-auto text-xs font-mono">
+                <pre className="bg-stone-900 text-stone-100 rounded p-3 overflow-x-auto text-xs font-mono mt-2">
                   docker compose up -d{'\n'}
-                  docker compose logs -f
+                  docker logs -f go2rtc
+                </pre>
+              </div>
+              <div className="rounded-lg border border-stone-200 p-4">
+                <p className="font-semibold text-stone-900 mb-2">Lokal testen</p>
+                <pre className="bg-stone-900 text-stone-100 rounded p-3 overflow-x-auto text-xs font-mono">
+                  {`# Web-UI:           http://192.168.178.50:1984/`}{'\n'}
+                  {`# HLS-Endpunkt:     http://192.168.178.50:1984/api/stream.m3u8?src=stallwache`}{'\n'}
+                  {`# MJPEG-Endpunkt:   http://192.168.178.50:1984/api/stream.mjpeg?src=stallwache`}{'\n'}
+                  {`# WebRTC-Endpunkt:  http://192.168.178.50:1984/stream.html?src=stallwache`}
                 </pre>
                 <p className="text-xs text-stone-500 mt-2">
-                  Ohne Docker: <code className="font-mono">pip install -r requirements.txt &amp;&amp; python main.py</code>
-                </p>
-              </div>
-
-              <div className="rounded-lg border border-stone-200 p-4">
-                <p className="font-semibold text-stone-900 mb-2">4. Dashboard verbinden</p>
-                <p className="text-sm text-stone-600">
-                  Im Reiter <strong>Konfiguration</strong> oben unter „Backend-Verbindung" die
-                  IP-Adresse + Port des Backends eintragen (Standard:{' '}
-                  <code className="font-mono text-xs bg-stone-100 px-1.5 py-0.5 rounded">
-                    http://&lt;ip&gt;:8080
-                  </code>
-                  ). Das Backend muss dafür die optionale HTTP-API exportieren
-                  (<code className="font-mono text-xs">FEATURE_WEB_DASHBOARD=true</code> in der .env).
+                  IP <strong>192.168.178.50</strong> durch die LAN-IP deines Ubuntu-Systems ersetzen.
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-xl border border-stone-200 p-6">
-            <h2 className="font-semibold text-stone-900 mb-3">Wo läuft das Backend?</h2>
-            <p className="text-sm text-stone-600 mb-3">
-              Die Rollei SafetyCam HD 20 liefert ihren Stream nur lokal auf <code className="font-mono text-xs bg-stone-100 px-1 rounded">192.168.178.108</code>.
-              Die Rollei-Cloud (<code className="font-mono text-xs bg-stone-100 px-1 rounded">rolleicam.net</code> /
-              <code className="font-mono text-xs bg-stone-100 px-1 rounded">megracloud.net</code>) funktioniert nur im Browser
-              und kann nicht als Stream-Quelle für OpenCV/ffmpeg verwendet werden.
+          {/* Schritt 3: Cloudflare Tunnel */}
+          <div className="bg-white rounded-xl border border-stone-200 p-6 space-y-4">
+            <h2 className="font-semibold text-stone-900 flex items-center gap-2">
+              <Radio className="w-4 h-4 text-stone-500" /> Schritt 3 – Cloudflare Tunnel (HTTPS-Exposure)
+            </h2>
+            <p className="text-sm text-stone-600">
+              Damit der Stream von <code className="text-xs bg-stone-100 px-1 rounded">stollenhof.vercel.app</code> aus geladen werden kann,
+              muss go2rtc per HTTPS erreichbar sein (sonst blockt der Browser wegen Mixed Content).
+              Cloudflare Tunnel kostet nichts und benötigt keine Port-Weiterleitung am Router.
             </p>
-            <ul className="text-sm text-stone-600 space-y-2 list-disc pl-5">
-              <li><strong>Empfohlen:</strong> Mini-PC oder Raspberry Pi direkt am Hof, im selben Netzwerk wie die Kamera. Nutzt die LAN-Stream-URL.</li>
-              <li><strong>Backend extern + VPN:</strong> Tailscale oder WireGuard auf dem Backend-Host – die Kamera ist dann erreichbar als wäre sie lokal.</li>
-              <li><strong>Port-Forwarding:</strong> Router → Port 80 weiterleiten zu <code className="font-mono text-xs bg-stone-100 px-1 rounded">192.168.178.108</code> und eine eigene DDNS (duckdns.org/no-ip) verwenden. <em>Achtung: Kennwort über HTTP exponiert.</em></li>
-            </ul>
+            <div className="space-y-3 text-sm">
+              <div className="rounded-lg border border-stone-200 p-4">
+                <p className="font-semibold text-stone-900 mb-2">cloudflared installieren & einrichten</p>
+                <pre className="bg-stone-900 text-stone-100 rounded p-3 overflow-x-auto text-xs font-mono leading-relaxed">
+{`# Installation (Ubuntu/Debian)
+curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o cloudflared.deb
+sudo dpkg -i cloudflared.deb
+
+# Einmalige Authentifizierung
+cloudflared tunnel login
+
+# Tunnel anlegen
+cloudflared tunnel create stollenhof-stream
+# → speichert ~/.cloudflared/<UUID>.json`}
+                </pre>
+              </div>
+              <div className="rounded-lg border border-stone-200 p-4">
+                <p className="font-semibold text-stone-900 mb-2">~/.cloudflared/config.yml</p>
+                <pre className="bg-stone-900 text-stone-100 rounded p-3 overflow-x-auto text-xs font-mono leading-relaxed">
+{`tunnel: <UUID-aus-create>
+credentials-file: /root/.cloudflared/<UUID>.json
+
+ingress:
+  - hostname: stream.stollenhof.de
+    service: http://localhost:1984
+  - service: http_status:404`}
+                </pre>
+              </div>
+              <div className="rounded-lg border border-stone-200 p-4">
+                <p className="font-semibold text-stone-900 mb-2">DNS-Eintrag + Start</p>
+                <pre className="bg-stone-900 text-stone-100 rounded p-3 overflow-x-auto text-xs font-mono">
+                  {`# DNS-Record automatisch anlegen`}{'\n'}
+                  cloudflared tunnel route dns stollenhof-stream stream.stollenhof.de{'\n\n'}
+                  {`# Als Systemdienst installieren (auto-restart)`}{'\n'}
+                  sudo cloudflared service install
+                </pre>
+                <p className="text-xs text-stone-500 mt-2">
+                  Danach ist <code>https://stream.stollenhof.de/api/stream.m3u8?src=stallwache</code> öffentlich erreichbar.
+                </p>
+              </div>
+              <div className="rounded-lg border border-amber-100 bg-amber-50 p-4">
+                <p className="font-semibold text-amber-900 mb-1">⚠ Sicherheit</p>
+                <p className="text-xs text-amber-800">
+                  Der HLS-Stream wäre damit für jeden mit der URL erreichbar.
+                  In <strong>Cloudflare Zero Trust → Access</strong> eine Policy auf <code>stream.stollenhof.de</code> setzen
+                  (z.B. E-Mail-Whitelist), um den Zugriff einzuschränken.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Schritt 4: Python-Backend */}
+          <div className="bg-white rounded-xl border border-stone-200 p-6 space-y-4">
+            <h2 className="font-semibold text-stone-900 flex items-center gap-2">
+              <Cpu className="w-4 h-4 text-stone-500" /> Schritt 4 – Python-Backend (YOLOv8 KI, optional)
+            </h2>
+            <p className="text-sm text-stone-600">
+              Das Backend liest den RTSP-Stream direkt von der Kamera, führt YOLOv8n-Inferenz aus und
+              schickt Telegram-Alerts. go2rtc und Backend laufen unabhängig.
+            </p>
+            <div className="rounded-lg border border-stone-200 p-4">
+              <pre className="bg-stone-900 text-stone-100 rounded p-3 overflow-x-auto text-xs font-mono">
+                git clone https://github.com/Pulse3000/stallwache-skill.git{'\n'}
+                cd stallwache-skill{'\n'}
+                cp .env.example .env{'\n'}
+                {`# .env anpassen:`}{'\n'}
+                {`# CAMERA_STREAM_URL=rtsp://admin:PW@192.168.178.104:554/live/ch0`}{'\n'}
+                {`# TELEGRAM_BOT_TOKEN=...`}{'\n'}
+                {`# TELEGRAM_CHAT_ID=...`}{'\n'}
+                {`# FEATURE_WEB_DASHBOARD=true`}{'\n'}
+                docker compose up -d
+              </pre>
+            </div>
           </div>
 
           <div className="bg-white rounded-xl border border-stone-200 p-6">
             <h2 className="font-semibold text-stone-900 mb-3">Empfohlene Hardware</h2>
             <ul className="text-sm text-stone-600 space-y-1.5 list-disc pl-5">
-              <li>Raspberry Pi 4 / 5 (mind. 4 GB RAM) oder Mini-PC mit x86/ARM</li>
-              <li>Optional: NVIDIA-GPU für höhere FPS (CUDA aktivieren in Konfiguration)</li>
-              <li>Rollei SafetyCam HD 20 (HTTP ASF/CGI-Stream) oder andere IP-Kamera mit HTTP-Stream</li>
-              <li>Stabile Netzwerkverbindung im Stall (LAN bevorzugt, sonst WLAN mit gutem Signal)</li>
-              <li>Telegram-Bot via @BotFather erstellt, eigene Chat-ID via @userinfobot</li>
+              <li>Ubuntu Mini-PC oder Raspberry Pi 4/5 (≥ 4 GB RAM) – läuft go2rtc + cloudflared + Backend</li>
+              <li>Optional: NVIDIA-GPU für höhere FPS (CUDA aktivieren)</li>
+              <li>LSC Smart Connect Indoor IP Camera · LAN-IP: 192.168.178.104</li>
+              <li>Cloudflare-Account (kostenlos) mit Domain <code>stollenhof.de</code></li>
+              <li>Telegram-Bot via @BotFather, Chat-ID via @userinfobot</li>
             </ul>
           </div>
 
