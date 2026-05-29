@@ -12,15 +12,18 @@ const REGION_HOSTS: Record<string, string> = {
 }
 
 function getHost(): string {
+  if (process.env.TUYA_BASE_URL) return process.env.TUYA_BASE_URL
   const region = (process.env.TUYA_REGION || 'eu').toLowerCase()
   return REGION_HOSTS[region] ?? REGION_HOSTS.eu
 }
 
 function getCreds(): { accessId: string; accessSecret: string } {
-  const accessId = process.env.TUYA_ACCESS_ID
-  const accessSecret = process.env.TUYA_ACCESS_SECRET
+  const accessId = process.env.TUYA_ACCESS_ID || process.env.TUYA_CLIENT_ID
+  const accessSecret = process.env.TUYA_ACCESS_SECRET || process.env.TUYA_CLIENT_SECRET
   if (!accessId || !accessSecret) {
-    throw new Error('TUYA_ACCESS_ID und TUYA_ACCESS_SECRET müssen gesetzt sein.')
+    throw new Error(
+      'TUYA_ACCESS_ID/TUYA_CLIENT_ID und TUYA_ACCESS_SECRET/TUYA_CLIENT_SECRET müssen gesetzt sein.',
+    )
   }
   return { accessId, accessSecret }
 }
@@ -102,16 +105,23 @@ async function signedRequest<T = unknown>(
 
 export type StreamProtocol = 'HLS' | 'RTSP'
 
-// Live-Stream-Adresse anfordern (HLS bevorzugt – im Browser direkt abspielbar).
+// Live-Stream-Adresse anfordern.
+//   HLS  → im Browser direkt abspielbar (hls.js / Safari nativ)
+//   RTSP → rtsps://-URL für externe Tools (VLC, go2rtc, YOLOv8-Backend)
+//
+// Wird ein `uid` übergeben (bzw. TUYA_USER_ID gesetzt), nutzt die Funktion den
+// User-ID-Endpunkt /v1.0/users/{uid}/devices/{id}/... – viele Tuya-Projekte
+// (Smart-Home-verknüpfte Geräte) liefern nur darüber eine URL, der device-only
+// Endpunkt antwortet sonst mit 1106/permission deny.
 export async function getLiveStreamUrl(
   deviceId: string,
   type: StreamProtocol = 'HLS',
+  uid?: string,
 ): Promise<string> {
-  const result = await signedRequest<{ url: string }>(
-    'POST',
-    `/v1.0/devices/${deviceId}/stream/actions/allocate`,
-    { type },
-  )
+  const path = uid
+    ? `/v1.0/users/${uid}/devices/${deviceId}/stream/actions/allocate`
+    : `/v1.0/devices/${deviceId}/stream/actions/allocate`
+  const result = await signedRequest<{ url: string }>('POST', path, { type })
   return result.url
 }
 
