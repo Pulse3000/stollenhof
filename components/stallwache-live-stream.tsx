@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Camera, RefreshCw, AlertTriangle } from 'lucide-react'
+import { Camera, RefreshCw, AlertTriangle, Copy, Check, Link2 } from 'lucide-react'
 
 const HLS_CDN = 'https://cdn.jsdelivr.net/npm/hls.js@1.5.18/dist/hls.min.js'
 
@@ -40,6 +40,10 @@ export function StallwacheLiveStream({ deviceId }: { deviceId?: string }) {
   const [state, setState] = useState<'idle' | 'loading' | 'playing' | 'error'>('idle')
   const [error, setError] = useState<string | null>(null)
   const [streamUrl, setStreamUrl] = useState<string | null>(null)
+  const [rtspUrl, setRtspUrl] = useState<string | null>(null)
+  const [rtspLoading, setRtspLoading] = useState(false)
+  const [rtspError, setRtspError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
 
   async function start() {
     setState('loading')
@@ -93,6 +97,33 @@ export function StallwacheLiveStream({ deviceId }: { deviceId?: string }) {
     })
   }
 
+  async function fetchRtsp() {
+    setRtspLoading(true)
+    setRtspError(null)
+    try {
+      const qs = deviceId ? `?type=RTSP&deviceId=${encodeURIComponent(deviceId)}` : '?type=RTSP'
+      const res = await fetch(`/api/stallwache/stream${qs}`, { cache: 'no-store' })
+      const data = await res.json()
+      if (!res.ok || !data.url) throw new Error(data.error || `HTTP ${res.status}`)
+      setRtspUrl(data.url)
+    } catch (err) {
+      setRtspError(err instanceof Error ? err.message : 'RTSP-URL konnte nicht geladen werden')
+    } finally {
+      setRtspLoading(false)
+    }
+  }
+
+  async function copyRtsp() {
+    if (!rtspUrl) return
+    try {
+      await navigator.clipboard.writeText(rtspUrl)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      /* Clipboard nicht verfügbar – URL ist sichtbar zum manuellen Kopieren */
+    }
+  }
+
   useEffect(() => {
     return () => {
       hlsRef.current?.destroy()
@@ -100,7 +131,8 @@ export function StallwacheLiveStream({ deviceId }: { deviceId?: string }) {
   }, [])
 
   return (
-    <div className="aspect-video bg-stone-950 relative flex items-center justify-center text-stone-400">
+    <div className="space-y-3">
+    <div className="aspect-video bg-stone-950 relative flex items-center justify-center text-stone-400 rounded-lg overflow-hidden">
       <video
         ref={videoRef}
         className={`absolute inset-0 w-full h-full object-contain ${state === 'playing' ? '' : 'hidden'}`}
@@ -160,6 +192,46 @@ export function StallwacheLiveStream({ deviceId }: { deviceId?: string }) {
           </button>
         </div>
       )}
+    </div>
+
+      {/* RTSP-URL (für VLC / go2rtc / YOLOv8-Backend – im Browser nicht abspielbar) */}
+      <div className="rounded-lg border border-stone-200 bg-white p-4">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Link2 className="w-4 h-4 text-stone-500" />
+            <span className="text-sm font-medium text-stone-800">RTSP-Stream (extern)</span>
+          </div>
+          <button
+            onClick={fetchRtsp}
+            disabled={rtspLoading}
+            className="text-xs px-3 py-1.5 rounded-lg border border-stone-300 hover:bg-stone-50 text-stone-700 inline-flex items-center gap-1.5 disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${rtspLoading ? 'animate-spin' : ''}`} />
+            RTSP-URL generieren
+          </button>
+        </div>
+        <p className="text-xs text-stone-400 mt-1">
+          Zeitlich begrenzte <code className="font-mono">rtsps://</code>-URL aus der Tuya-Cloud –
+          für VLC, go2rtc oder das YOLOv8-Backend. Browser können RTSP nicht direkt abspielen.
+        </p>
+        {rtspError && (
+          <p className="text-xs text-red-600 font-mono break-all mt-2">{rtspError}</p>
+        )}
+        {rtspUrl && (
+          <div className="mt-2 flex items-stretch gap-2">
+            <code className="flex-1 text-[11px] font-mono bg-stone-100 rounded px-2 py-1.5 break-all text-stone-700">
+              {rtspUrl}
+            </code>
+            <button
+              onClick={copyRtsp}
+              title="In Zwischenablage kopieren"
+              className="shrink-0 px-2.5 rounded-lg border border-stone-300 hover:bg-stone-50 text-stone-600 inline-flex items-center"
+            >
+              {copied ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

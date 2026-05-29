@@ -20,11 +20,25 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'type muss HLS oder RTSP sein.' }, { status: 400 })
   }
 
+  const uid = searchParams.get('uid') || process.env.TUYA_USER_ID || undefined
+
   try {
-    const url = await getLiveStreamUrl(deviceId, type)
+    // Bevorzugt der User-ID-Endpunkt (falls uid bekannt) – funktioniert für
+    // Smart-Home-verknüpfte Geräte. Bei Fehler ohne uid kein Fallback nötig.
+    const url = await getLiveStreamUrl(deviceId, type, uid)
     return NextResponse.json({ url, type, deviceId })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Unbekannter Fehler'
+    // Wenn der uid-Pfad scheitert, einmal den device-only-Endpunkt probieren
+    // (und umgekehrt), bevor wir aufgeben.
+    if (uid) {
+      try {
+        const url = await getLiveStreamUrl(deviceId, type)
+        return NextResponse.json({ url, type, deviceId })
+      } catch {
+        /* unten gemeinsamer Fehler */
+      }
+    }
     return NextResponse.json({ error: msg }, { status: 502 })
   }
 }
