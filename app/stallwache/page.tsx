@@ -1,8 +1,7 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
-import type Hls from 'hls.js'
 import {
   Camera,
   Cpu,
@@ -23,8 +22,6 @@ import {
   Power,
   Github,
   RefreshCw,
-  Maximize2,
-  ExternalLink,
 } from 'lucide-react'
 import { usePersistedState } from '@/lib/use-persisted-state'
 import {
@@ -88,130 +85,6 @@ export default function StallwachePage() {
   const [eventOpen, setEventOpen] = useState(false)
   const [editId, setEditId] = useState<number | null>(null)
   const [form, setForm] = useState<Omit<StallwacheEvent, 'id'>>(emptyEvent())
-  const [streamError, setStreamError] = useState(false)
-  const [streamKey, setStreamKey] = useState(0)
-  const [reconnectAttempt, setReconnectAttempt] = useState(0)
-  // Tuya-Stream: URL und Ablaufzeitpunkt (aus /api/get-stream)
-  const [tuyaUrl, setTuyaUrl] = useState<string | null>(null)
-  const [tuyaLoading, setTuyaLoading] = useState(false)
-  const [tuyaError, setTuyaError] = useState<string | null>(null)
-  const previewRef = useRef<HTMLDivElement>(null)
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const hlsRef = useRef<Hls | null>(null)
-  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  // Tuya-Stream-URL von der API-Route holen
-  async function fetchTuyaStreamUrl() {
-    setTuyaLoading(true)
-    setTuyaError(null)
-    try {
-      const res = await fetch('/api/get-stream', { cache: 'no-store' })
-      const data: { url?: string; expiresAt?: number; error?: string } = await res.json()
-      if (!res.ok || !data.url) throw new Error(data.error ?? `HTTP ${res.status}`)
-      setTuyaUrl(data.url)
-      setStreamError(false)
-      setStreamKey((k) => k + 1)
-      // Auto-Refresh kurz vor Ablauf (expiresAt minus 2 Minuten Puffer)
-      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
-      const ttl = (data.expiresAt ?? Date.now() + 28 * 60 * 1000) - Date.now() - 2 * 60 * 1000
-      if (ttl > 0) {
-        refreshTimerRef.current = setTimeout(fetchTuyaStreamUrl, ttl)
-      }
-    } catch (err) {
-      setTuyaError(err instanceof Error ? err.message : 'Unbekannter Fehler')
-    } finally {
-      setTuyaLoading(false)
-    }
-  }
-
-  // Stream-URL laden wenn System gestartet wird
-  useEffect(() => {
-    if (!config.enabled) {
-      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
-      setTuyaUrl(null)
-      return
-    }
-    fetchTuyaStreamUrl()
-    return () => {
-      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config.enabled])
-
-  // HLS-Player anhängen – Quelle: tuyaUrl (API) oder config.cameraStreamUrlHls (Fallback)
-  const activeStreamUrl = tuyaUrl ?? config.cameraStreamUrlHls
-
-  // HLS-Player anhängen (hls.js für Chrome/Firefox, natives HLS für Safari/iOS)
-  useEffect(() => {
-    if (!config.enabled || !activeStreamUrl) return
-    const video = videoRef.current
-    if (!video) return
-
-    let cancelled = false
-    let hls: Hls | null = null
-
-    const attach = async () => {
-      if (video.canPlayType('application/vnd.apple.mpegurl')) {
-        video.src = activeStreamUrl
-        video.play().catch(() => {})
-        return
-      }
-      const HlsModule = (await import('hls.js')).default
-      if (cancelled) return
-      if (!HlsModule.isSupported()) { setStreamError(true); return }
-      hls = new HlsModule({ lowLatencyMode: true, liveSyncDuration: 2, maxLiveSyncPlaybackRate: 1.5 })
-      hlsRef.current = hls
-      hls.loadSource(activeStreamUrl)
-      hls.attachMedia(video)
-      hls.on(HlsModule.Events.MANIFEST_PARSED, () => {
-        video.play().catch(() => {})
-        setReconnectAttempt(0)
-      })
-      hls.on(HlsModule.Events.ERROR, (_event, data) => {
-        if (data.fatal) setStreamError(true)
-      })
-    }
-    attach()
-
-    return () => {
-      cancelled = true
-      if (hls) { hls.destroy(); hlsRef.current = null }
-      video.removeAttribute('src')
-      video.load()
-    }
-  }, [config.enabled, activeStreamUrl, streamKey])
-
-  // Auto-reconnect (Exponential Backoff): nach hls.js-Fehler neue URL holen (Token könnte abgelaufen sein)
-  useEffect(() => {
-    if (!streamError || !config.enabled || !activeStreamUrl) return
-    if (reconnectAttempt >= 5) return
-    const delayMs = 2000 * Math.pow(2, reconnectAttempt)
-    reconnectTimerRef.current = setTimeout(() => {
-      // Neue Tuya-URL anfordern statt dieselbe nochmal zu versuchen
-      fetchTuyaStreamUrl()
-      setReconnectAttempt((n) => n + 1)
-    }, delayMs)
-    return () => { if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current) }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [streamError, reconnectAttempt, config.enabled, activeStreamUrl])
-
-  function manualReconnect() {
-    if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
-    setStreamError(false)
-    setReconnectAttempt(0)
-    fetchTuyaStreamUrl()
-  }
-
-  function toggleFullscreen() {
-    const el = previewRef.current
-    if (!el) return
-    if (document.fullscreenElement) {
-      document.exitFullscreen().catch(() => {})
-    } else {
-      el.requestFullscreen().catch(() => {})
-    }
-  }
 
   const sortedEvents = [...events].sort((a, b) => b.zeitstempel.localeCompare(a.zeitstempel))
   const todayEvents = events.filter((e) => e.zeitstempel.slice(0, 10) === TODAY_ISO)
@@ -272,10 +145,6 @@ export default function StallwachePage() {
   }
 
   function toggleSystem() {
-    if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
-    setStreamError(false)
-    setStreamKey((k) => k + 1)
-    setReconnectAttempt(0)
     setConfig({ ...config, enabled: !config.enabled })
     const newId = Math.max(0, ...events.map((e) => e.id)) + 1
     const event: StallwacheEvent = {
@@ -472,55 +341,19 @@ export default function StallwachePage() {
           {/* Kamera-Player */}
           <div className="rounded-2xl overflow-hidden bg-stone-950 shadow-xl">
             {/* Toolbar */}
-            <div className="px-4 py-3 bg-stone-900/80 flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2.5">
-                {config.enabled && (
-                  <span className="flex items-center gap-1.5 text-xs font-bold text-white bg-red-600 px-2.5 py-1 rounded-full">
-                    <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-                    LIVE
-                  </span>
-                )}
-                <span className="text-stone-300 text-sm font-medium">{config.cameraName}</span>
-                {config.enabled && (
-                  <span className="text-stone-500 text-xs font-mono">
-                    {status.fps.toFixed(1)} fps
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-0.5">
-                {tuyaLoading && (
-                  <span className="text-xs text-stone-500 flex items-center gap-1 mr-2">
-                    <RefreshCw className="w-3 h-3 animate-spin" /> Tuya…
-                  </span>
-                )}
-                {config.enabled && (activeStreamUrl || config.cameraStreamUrlHls) && (
-                  <>
-                    <button
-                      onClick={manualReconnect}
-                      className="p-2 rounded-lg hover:bg-stone-700/60 text-stone-400 hover:text-white transition-colors"
-                      title="Neu verbinden"
-                    >
-                      <RefreshCw className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={toggleFullscreen}
-                      className="p-2 rounded-lg hover:bg-stone-700/60 text-stone-400 hover:text-white transition-colors"
-                      title="Vollbild"
-                    >
-                      <Maximize2 className="w-4 h-4" />
-                    </button>
-                    <a
-                      href={config.cameraStreamUrlHls}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="p-2 rounded-lg hover:bg-stone-700/60 text-stone-400 hover:text-white transition-colors"
-                      title="In neuem Tab öffnen"
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                    </a>
-                  </>
-                )}
-              </div>
+            <div className="px-4 py-3 bg-stone-900/80 flex items-center gap-2.5">
+              {config.enabled && (
+                <span className="flex items-center gap-1.5 text-xs font-bold text-white bg-red-600 px-2.5 py-1 rounded-full">
+                  <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                  LIVE
+                </span>
+              )}
+              <span className="text-stone-300 text-sm font-medium">{config.cameraName}</span>
+              {config.enabled && (
+                <span className="text-stone-500 text-xs font-mono">
+                  {status.fps.toFixed(1)} fps
+                </span>
+              )}
             </div>
             <StallwacheLiveStream />
           </div>
