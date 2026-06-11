@@ -7,6 +7,9 @@ import './globals.css'
 export const metadata: Metadata = {
   title: 'Oberer Stollenhof – Hofverwaltung',
   description: 'Verwaltungssystem für den Oberen Stollenhof – Biolandbau, Ferienwohnungen und Hofveranstaltungen in Rechberg, Baden-Württemberg.',
+  verification: {
+    google: 'yJA8LjELX2KFWQU-cvHjUcTQ1MMkl52qH6NK-p7FirE',
+  },
 }
 
 export default function RootLayout({ children }: { children: ReactNode }) {
