@@ -1,3 +1,0 @@
-Add Stall3D module, app integration, public files and variant preview
-
-Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
