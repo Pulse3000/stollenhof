@@ -1,0 +1,12 @@
+{
+  "name": "stollenhof",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "start": "npx http-server public -p 3000 -c-1",
+    "preview": "npx serve public"
+  },
+  "engines": {
+    "node": ">=16"
+  }
+}
