@@ -1,0 +1,3 @@
+<resources>
+    <style name="Theme.Zeiterfassung" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>
