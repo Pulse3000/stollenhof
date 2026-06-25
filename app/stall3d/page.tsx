@@ -29,10 +29,9 @@ export default function Stall3DPage() {
   const mountRef = useRef<HTMLDivElement>(null)
   const [selected, setSelected] = useState<Kuh | null>(null)
   const [hintVisible, setHintVisible] = useState(true)
-  // Funktion zum Zurücksetzen der Kamera, von Three befüllt
+  const [missingImages, setMissingImages] = useState<number[]>([])
   const resetViewRef = useRef<(() => void) | null>(null)
 
-  // Aktuelle Herde stabil als Ref, damit der Three-Effekt nicht bei jedem Render neu baut
   const kueheRef = useRef(kuehe)
   kueheRef.current = kuehe
 
@@ -66,7 +65,7 @@ export default function Stall3DPage() {
       camera.position.copy(defaultCamPos)
       camera.lookAt(target)
 
-      const renderer = new THREE.WebGLRenderer({ antialias: true })
+      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
       renderer.setSize(width, height)
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
       renderer.shadowMap.enabled = true
@@ -78,8 +77,8 @@ export default function Stall3DPage() {
       renderer.domElement.style.cursor = 'grab'
 
       // --- Licht ---
-      scene.add(new THREE.AmbientLight('#ffffff', 1.6))
-      const sun = new THREE.DirectionalLight('#fffef5', 4.2)
+      scene.add(new THREE.AmbientLight('#ffffff', 1.8))
+      const sun = new THREE.DirectionalLight('#fffef5', 3.6)
       sun.position.set(25, 30, 10)
       sun.castShadow = true
       sun.shadow.mapSize.set(2048, 2048)
@@ -96,9 +95,9 @@ export default function Stall3DPage() {
       fill.position.set(-10, 8, -5)
       scene.add(fill)
 
-      // Sammlung für späteres dispose
       const geometries: THREE.BufferGeometry[] = []
       const materials: THREE.Material[] = []
+      const textures: THREE.Texture[] = []
       const track = <T extends THREE.BufferGeometry | THREE.Material>(o: T): T => {
         if ((o as THREE.BufferGeometry).isBufferGeometry) geometries.push(o as THREE.BufferGeometry)
         else materials.push(o as THREE.Material)
@@ -145,7 +144,7 @@ export default function Stall3DPage() {
       tableTop.receiveShadow = true
       scene.add(tableTop)
 
-      // --- Fressgitter (gemeinsame Geometrien) ---
+      // --- Fressgitter ---
       const postGeo = track(new THREE.CylinderGeometry(0.04, 0.05, 1.1, 8))
       const postMat = track(new THREE.MeshStandardMaterial({ color: '#7a7a7a', roughness: 0.3, metalness: 0.85 }))
       const postTopGeo = track(new THREE.CylinderGeometry(0.06, 0.04, 0.15, 8))
@@ -172,127 +171,204 @@ export default function Stall3DPage() {
         scene.add(bar2)
       }
 
-      // --- Kuh-Mesh ---
-      type CowEntry = { group: THREE.Group; body: THREE.MeshStandardMaterial; marker: THREE.Mesh; kuh: Kuh }
-      const cows: CowEntry[] = []
+      // --- Default-Textur als Fallback (per Canvas erzeugt) ---
+      function buildDefaultTexture(nr: number, name: string): THREE.CanvasTexture {
+        const W = 512
+        const H = 640
+        const canvas = document.createElement('canvas')
+        canvas.width = W
+        canvas.height = H
+        const ctx = canvas.getContext('2d')!
+        // sanfter Hintergrund
+        ctx.fillStyle = 'rgba(0,0,0,0)'
+        ctx.fillRect(0, 0, W, H)
+        // Kopf-Oval
+        ctx.fillStyle = '#f5f0e8'
+        ctx.beginPath()
+        ctx.ellipse(W / 2, H / 2 + 30, 170, 220, 0, 0, Math.PI * 2)
+        ctx.fill()
+        // Schnauze
+        ctx.fillStyle = '#d8b4a0'
+        ctx.beginPath()
+        ctx.ellipse(W / 2, H / 2 + 200, 100, 70, 0, 0, Math.PI * 2)
+        ctx.fill()
+        // Nasenlöcher
+        ctx.fillStyle = '#5a3a28'
+        ctx.beginPath()
+        ctx.ellipse(W / 2 - 35, H / 2 + 210, 12, 18, 0, 0, Math.PI * 2)
+        ctx.ellipse(W / 2 + 35, H / 2 + 210, 12, 18, 0, 0, Math.PI * 2)
+        ctx.fill()
+        // Augen
+        ctx.fillStyle = '#2a1f15'
+        ctx.beginPath()
+        ctx.ellipse(W / 2 - 60, H / 2 + 30, 14, 18, 0, 0, Math.PI * 2)
+        ctx.ellipse(W / 2 + 60, H / 2 + 30, 14, 18, 0, 0, Math.PI * 2)
+        ctx.fill()
+        // Ohren
+        ctx.fillStyle = '#e8e0d5'
+        ctx.beginPath()
+        ctx.ellipse(W / 2 - 165, H / 2 - 90, 55, 80, -0.5, 0, Math.PI * 2)
+        ctx.ellipse(W / 2 + 165, H / 2 - 90, 55, 80, 0.5, 0, Math.PI * 2)
+        ctx.fill()
+        // Hörner
+        ctx.strokeStyle = '#e8e0d0'
+        ctx.lineWidth = 22
+        ctx.lineCap = 'round'
+        ctx.beginPath()
+        ctx.moveTo(W / 2 - 110, H / 2 - 140)
+        ctx.quadraticCurveTo(W / 2 - 200, H / 2 - 240, W / 2 - 230, H / 2 - 180)
+        ctx.moveTo(W / 2 + 110, H / 2 - 140)
+        ctx.quadraticCurveTo(W / 2 + 200, H / 2 - 240, W / 2 + 230, H / 2 - 180)
+        ctx.stroke()
+        // Platzschild
+        ctx.fillStyle = '#e8c75e'
+        ctx.fillRect(W / 2 + 90, H / 2 + 120, 80, 50)
+        ctx.fillStyle = '#2a1f15'
+        ctx.font = 'bold 28px sans-serif'
+        ctx.textAlign = 'center'
+        ctx.fillText(String(nr), W / 2 + 130, H / 2 + 155)
+        // Name unten
+        ctx.font = 'bold 32px sans-serif'
+        ctx.fillStyle = '#3a3025'
+        ctx.fillText(name, W / 2, H - 24)
+        const tex = new THREE.CanvasTexture(canvas)
+        tex.colorSpace = THREE.SRGBColorSpace
+        tex.anisotropy = 4
+        textures.push(tex)
+        return tex
+      }
 
-      function buildCow(kuh: Kuh, isBrown: boolean): CowEntry {
+      // --- Bildtafel + Sockel + Marker pro Kuh ---
+      type CowEntry = {
+        group: THREE.Group
+        plate: THREE.Mesh
+        plateMat: THREE.MeshStandardMaterial
+        marker: THREE.Mesh
+        kuh: Kuh
+      }
+      const cows: CowEntry[] = []
+      const missing: number[] = []
+
+      const loader = new THREE.TextureLoader()
+      function loadTexture(nr: number, fallback: THREE.Texture): Promise<THREE.Texture> {
+        return new Promise((resolve) => {
+          loader.load(
+            `/assets/kuh_bilder/${nr}.png`,
+            (tex) => {
+              tex.colorSpace = THREE.SRGBColorSpace
+              tex.anisotropy = 4
+              textures.push(tex)
+              resolve(tex)
+            },
+            undefined,
+            () => {
+              missing.push(nr)
+              resolve(fallback)
+            },
+          )
+        })
+      }
+
+      function buildCow(kuh: Kuh): CowEntry {
         const group = new THREE.Group()
         group.userData = { nr: kuh.nr }
 
-        const bodyColor = isBrown ? '#8B5E3C' : '#f5f0e8'
-        const accent = isBrown ? '#a0724a' : '#e8e0d5'
-        const legColor = isBrown ? '#7a4e30' : '#e0d8cc'
-        const noseColor = isBrown ? '#5a3a28' : '#d4c8b8'
-
-        const bodyMat = track(new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.55, metalness: 0.05 }))
-        const body = new THREE.Mesh(track(new THREE.BoxGeometry(0.72, 0.88, 1.75)), bodyMat)
-        body.position.y = 0.62
+        // Stilisierter Sockel/Körper, damit der Kopf nicht in der Luft schwebt
+        const bodyMat = track(new THREE.MeshStandardMaterial({
+          color: '#9c8a78',
+          roughness: 0.65,
+          metalness: 0.05,
+          transparent: true,
+          opacity: 0.55,
+        }))
+        const bodyGeo = track(new THREE.BoxGeometry(0.7, 0.85, 1.6))
+        const body = new THREE.Mesh(bodyGeo, bodyMat)
+        body.position.set(0, 0.55, -0.7)
         body.castShadow = true
         body.receiveShadow = true
         group.add(body)
 
-        const legGeo = track(new THREE.CylinderGeometry(0.09, 0.1, 0.58, 8))
-        const legMat = track(new THREE.MeshStandardMaterial({ color: legColor, roughness: 0.5 }))
-        const hoofGeo = track(new THREE.CylinderGeometry(0.1, 0.09, 0.08, 8))
-        const hoofMat = track(new THREE.MeshStandardMaterial({ color: '#3a3a3a', roughness: 0.4, metalness: 0.3 }))
+        // Beine als angedeutete Stützen
+        const legGeo = track(new THREE.CylinderGeometry(0.06, 0.07, 0.55, 8))
+        const legMat = track(new THREE.MeshStandardMaterial({ color: '#6b5a48', roughness: 0.6 }))
         for (const pos of [
-          { x: 0.22, z: 0.55 },
-          { x: -0.22, z: 0.55 },
-          { x: 0.22, z: -0.55 },
-          { x: -0.22, z: -0.55 },
+          { x: 0.22, z: -0.15 },
+          { x: -0.22, z: -0.15 },
+          { x: 0.22, z: -1.25 },
+          { x: -0.22, z: -1.25 },
         ]) {
           const leg = new THREE.Mesh(legGeo, legMat)
-          leg.position.set(pos.x, 0.29, pos.z)
+          leg.position.set(pos.x, 0.28, pos.z)
           leg.castShadow = true
           group.add(leg)
-          const hoof = new THREE.Mesh(hoofGeo, hoofMat)
-          hoof.position.set(pos.x, 0.03, pos.z)
-          group.add(hoof)
         }
 
-        const head = new THREE.Mesh(track(new THREE.BoxGeometry(0.44, 0.44, 0.52)), bodyMat)
-        head.position.set(0, 1.08, 1.02)
-        head.castShadow = true
-        group.add(head)
-        const snout = new THREE.Mesh(
-          track(new THREE.BoxGeometry(0.32, 0.2, 0.14)),
-          track(new THREE.MeshStandardMaterial({ color: noseColor, roughness: 0.45 })),
-        )
-        snout.position.set(0, 0.98, 1.3)
-        group.add(snout)
+        // Bildfläche: vertikal, Normale +Z (= 90° zum waagerechten Futtertisch),
+        // sitzt mittig zwischen den beiden Fressgitter-Pfosten.
+        const PLATE_W = 1.4
+        const PLATE_H = 1.9
+        const plateGeo = track(new THREE.PlaneGeometry(PLATE_W, PLATE_H))
+        const fallback = buildDefaultTexture(kuh.nr, kuh.name)
+        const plateMat = track(new THREE.MeshStandardMaterial({
+          map: fallback,
+          transparent: true,
+          alphaTest: 0.05,
+          side: THREE.DoubleSide,
+          roughness: 0.85,
+          metalness: 0,
+        }))
+        const plate = new THREE.Mesh(plateGeo, plateMat)
+        // Position: x=0 lokal (group sitzt schon am Platz), y so dass Bildmitte etwa Kopfhöhe,
+        // z leicht vor dem Fressgitter (gate-z = 3.07 weltweit, lokal also 3.07 - (-1.55) = 4.62)
+        // Wir setzen die Tafel direkt zwischen die beiden Bars im Fressgitter.
+        plate.position.set(0, PLATE_H / 2 + 0.05, 3.07)
+        plate.castShadow = true
+        plate.receiveShadow = true
+        group.add(plate)
 
-        const earGeo = track(new THREE.BoxGeometry(0.1, 0.14, 0.06))
-        const earMat = track(new THREE.MeshStandardMaterial({ color: accent, roughness: 0.5 }))
-        const earL = new THREE.Mesh(earGeo, earMat)
-        earL.position.set(0.23, 1.32, 0.92)
-        earL.rotation.z = 0.5
-        group.add(earL)
-        const earR = new THREE.Mesh(earGeo, earMat)
-        earR.position.set(-0.23, 1.32, 0.92)
-        earR.rotation.z = -0.5
-        group.add(earR)
-
-        const hornGeo = track(new THREE.CylinderGeometry(0.03, 0.05, 0.16, 6))
-        const hornMat = track(new THREE.MeshStandardMaterial({ color: '#e8e0d0', roughness: 0.3 }))
-        const hornL = new THREE.Mesh(hornGeo, hornMat)
-        hornL.position.set(0.16, 1.33, 0.88)
-        hornL.rotation.x = -0.6
-        group.add(hornL)
-        const hornR = new THREE.Mesh(hornGeo, hornMat)
-        hornR.position.set(-0.16, 1.33, 0.88)
-        hornR.rotation.x = -0.6
-        group.add(hornR)
-
-        const udder = new THREE.Mesh(
-          track(new THREE.BoxGeometry(0.26, 0.16, 0.28)),
-          track(new THREE.MeshStandardMaterial({ color: '#e8c8b8', roughness: 0.5 })),
-        )
-        udder.position.set(0, 0.26, -0.35)
-        group.add(udder)
-
-        if (!isBrown) {
-          const spotMat = track(new THREE.MeshStandardMaterial({ color: '#1a1a1a', roughness: 0.55 }))
-          for (const sp of [
-            { x: 0.15, y: 0.75, z: 0.3, sx: 0.22, sy: 0.18, sz: 0.35 },
-            { x: -0.2, y: 0.5, z: -0.3, sx: 0.28, sy: 0.22, sz: 0.3 },
-            { x: 0.05, y: 0.7, z: -0.6, sx: 0.18, sy: 0.2, sz: 0.25 },
-          ]) {
-            const spot = new THREE.Mesh(track(new THREE.BoxGeometry(sp.sx, sp.sy, sp.sz)), spotMat)
-            spot.position.set(sp.x, sp.y, sp.z)
-            group.add(spot)
-          }
-        }
-
-        // Status-Marker (schwebende Kugel über der Kuh)
+        // Status-Marker schwebt über der Tafel
         const markerColor = STATUS_COLOR[kuh.status]
         const marker = new THREE.Mesh(
-          track(new THREE.SphereGeometry(0.14, 16, 16)),
+          track(new THREE.SphereGeometry(0.16, 16, 16)),
           track(new THREE.MeshStandardMaterial({
             color: markerColor,
             emissive: markerColor,
-            emissiveIntensity: 0.45,
-            roughness: 0.4,
+            emissiveIntensity: 0.6,
+            roughness: 0.35,
           })),
         )
-        marker.position.set(0, 1.75, 0)
+        marker.position.set(0, PLATE_H + 0.4, 3.07)
         group.add(marker)
-        // dünner Stiel
         const stalk = new THREE.Mesh(
           track(new THREE.CylinderGeometry(0.015, 0.015, 0.3, 6)),
           track(new THREE.MeshStandardMaterial({ color: '#999', roughness: 0.6 })),
         )
-        stalk.position.set(0, 1.55, 0)
+        stalk.position.set(0, PLATE_H + 0.15, 3.07)
         group.add(stalk)
 
-        return { group, body: bodyMat, marker, kuh }
+        // Echte Textur asynchron nachladen
+        loadTexture(kuh.nr, fallback).then((tex) => {
+          if (tex !== fallback) {
+            plateMat.map = tex
+            plateMat.needsUpdate = true
+          }
+        })
+
+        return { group, plate, plateMat, marker, kuh }
       }
 
       herd.forEach((kuh, i) => {
-        const entry = buildCow(kuh, i % 2 === 0)
+        const entry = buildCow(kuh)
         entry.group.position.set(startX + i * spacing, 0, -1.55)
         scene.add(entry.group)
         cows.push(entry)
+      })
+
+      // Nach dem (a)synchronen Laden Liste der fehlenden Bilder an React weitergeben
+      Promise.resolve().then(() => {
+        setTimeout(() => {
+          if (!disposed && missing.length > 0) setMissingImages([...new Set(missing)].sort((a, b) => a - b))
+        }, 600)
       })
 
       // --- Controls ---
@@ -316,14 +392,14 @@ export default function Stall3DPage() {
       let selectedEntry: CowEntry | null = null
       function highlight(entry: CowEntry | null) {
         if (selectedEntry && selectedEntry !== entry) {
-          selectedEntry.body.emissive.setHex(0x000000)
-          selectedEntry.body.emissiveIntensity = 0
+          selectedEntry.plateMat.emissive.setHex(0x000000)
+          selectedEntry.plateMat.emissiveIntensity = 0
           selectedEntry.group.scale.setScalar(1)
         }
         if (entry) {
-          entry.body.emissive.set('#ffd24d')
-          entry.body.emissiveIntensity = 0.25
-          entry.group.scale.setScalar(1.08)
+          entry.plateMat.emissive.set('#ffd24d')
+          entry.plateMat.emissiveIntensity = 0.35
+          entry.group.scale.setScalar(1.05)
         }
         selectedEntry = entry
       }
@@ -343,7 +419,7 @@ export default function Stall3DPage() {
         if (!down) return
         const dist = Math.hypot(e.clientX - down.x, e.clientY - down.y)
         down = null
-        if (dist > 6) return // war ein Drag → nicht selektieren
+        if (dist > 6) return
         const rect = renderer.domElement.getBoundingClientRect()
         ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1
         ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1
@@ -381,9 +457,8 @@ export default function Stall3DPage() {
       const animate = () => {
         raf = requestAnimationFrame(animate)
         const t = clock.getElapsedTime()
-        // Marker sanft pulsieren lassen
         for (const c of cows) {
-          c.marker.position.y = 1.75 + Math.sin(t * 2 + c.kuh.nr) * 0.05
+          c.marker.position.y = 1.9 + 0.4 + Math.sin(t * 2 + c.kuh.nr) * 0.05
         }
         controls.update()
         renderer.render(scene, camera)
@@ -398,6 +473,7 @@ export default function Stall3DPage() {
         controls.dispose()
         geometries.forEach((g) => g.dispose())
         materials.forEach((m) => m.dispose())
+        textures.forEach((t) => t.dispose())
         renderer.dispose()
         if (renderer.domElement.parentNode === mount) mount.removeChild(renderer.domElement)
         resetViewRef.current = null
@@ -452,14 +528,12 @@ export default function Stall3DPage() {
       <div className="relative rounded-2xl overflow-hidden border border-stone-300 bg-[#e8e4dc] shadow-inner">
         <div ref={mountRef} className="w-full h-[72vh] min-h-[460px]" />
 
-        {/* Hinweis */}
         {hintVisible && (
           <div className="absolute bottom-5 left-1/2 -translate-x-1/2 bg-black/65 backdrop-blur text-white text-xs sm:text-sm px-5 py-2.5 rounded-full border border-white/15 pointer-events-none">
             🖱️ Drehen &amp; Zoomen &nbsp;|&nbsp; 👆 Klick auf eine Kuh für Infos
           </div>
         )}
 
-        {/* Popup */}
         {selected && (
           <div className="absolute top-4 right-4 left-4 sm:left-auto sm:w-80 bg-white/92 backdrop-blur-md rounded-2xl shadow-2xl border border-white/60 p-5">
             <button
@@ -469,9 +543,7 @@ export default function Stall3DPage() {
             >
               <X className="w-4 h-4" />
             </button>
-            <div className="text-xl font-bold text-stone-800 pr-8 mb-2">
-              {selected.name}
-            </div>
+            <div className="text-xl font-bold text-stone-800 pr-8 mb-2">{selected.name}</div>
             <InfoRow label="Ohrmarke" value={ohrmarkeFor(selected.nr)} />
             <InfoRow
               label="Status"
@@ -499,6 +571,25 @@ export default function Stall3DPage() {
               <p className="mt-3 text-xs text-stone-500 italic border-t border-stone-200 pt-2">{selected.notiz}</p>
             )}
           </div>
+        )}
+      </div>
+
+      {/* Hinweis zu fehlenden Bildern */}
+      <div className="bg-stone-50 border border-stone-200 rounded-xl p-4 text-xs text-stone-600 space-y-2">
+        <p>
+          <strong className="text-stone-800">Eigene Fotos hochladen:</strong> Lege die Porträtfotos
+          der Kühe als <code className="font-mono bg-stone-200 px-1 rounded">1.png</code>,{' '}
+          <code className="font-mono bg-stone-200 px-1 rounded">2.png</code> … in den Ordner{' '}
+          <code className="font-mono bg-stone-200 px-1 rounded">public/assets/kuh_bilder/</code>{' '}
+          (Dateiname = Stallplatz-Nummer). Fehlende Bilder werden automatisch durch einen
+          Platzhalter ersetzt.
+        </p>
+        {missingImages.length > 0 && (
+          <p className="text-stone-500">
+            <strong>Aktuell ohne Foto:</strong>{' '}
+            {missingImages.slice(0, 25).join(', ')}
+            {missingImages.length > 25 && ` … (+${missingImages.length - 25})`}
+          </p>
         )}
       </div>
     </div>
