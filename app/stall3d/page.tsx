@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Boxes, X, RotateCcw } from 'lucide-react'
+import { Boxes, X, RotateCcw, Play, Square, ChevronLeft, ChevronRight, Footprints } from 'lucide-react'
 import { usePersistedState } from '@/lib/use-persisted-state'
 import {
   STORAGE_KEYS,
@@ -34,7 +34,12 @@ export default function Stall3DPage() {
   const [popupImgOk, setPopupImgOk] = useState(true)
   const [missingImages, setMissingImages] = useState<number[]>([])
   const [hover, setHover] = useState<{ kuh: Kuh; x: number; y: number } | null>(null)
+  const [walking, setWalking] = useState(false)
+  const [focusLabel, setFocusLabel] = useState('')
   const resetViewRef = useRef<(() => void) | null>(null)
+  const flyToCowRef = useRef<((nr: number) => void) | null>(null)
+  const stepRef = useRef<((dir: number) => void) | null>(null)
+  const tourToggleRef = useRef<(() => void) | null>(null)
 
   const kueheRef = useRef(kuehe)
   kueheRef.current = kuehe
@@ -425,10 +430,116 @@ export default function Stall3DPage() {
       controls.update()
 
       resetViewRef.current = () => {
+        camAnim = null
+        tourActive = false
+        setWalking(false)
+        setFocusLabel('')
         camera.position.copy(defaultCamPos)
         controls.target.copy(target)
         controls.update()
       }
+
+      // --- Kamera-Fly-To / Step / Auto-Tour ---
+      const clock = new THREE.Clock()
+      type CamAnim = {
+        fromP: THREE.Vector3
+        toP: THREE.Vector3
+        fromT: THREE.Vector3
+        toT: THREE.Vector3
+        t0: number
+        dur: number
+        onDone?: () => void
+      }
+      let camAnim: CamAnim | null = null
+      let tourActive = false
+      let tourIndex = 0
+      let tourPauseUntil = 0
+      const tourPauseDur = 1.6
+      const flyDur = 1.05
+
+      function easeInOut(x: number) {
+        return x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2
+      }
+
+      function flyToCowIndex(idx: number, opts?: { dur?: number; onDone?: () => void; reportLabel?: boolean }) {
+        const cow = cows[idx]
+        if (!cow) return
+        const cowX = cow.group.position.x
+        const newPos = new THREE.Vector3(cowX - 0.05, 1.62, -2.1)
+        const newTarget = new THREE.Vector3(cowX, 1.42, -1.0)
+        camAnim = {
+          fromP: camera.position.clone(),
+          toP: newPos,
+          fromT: controls.target.clone(),
+          toT: newTarget,
+          t0: clock.getElapsedTime(),
+          dur: opts?.dur ?? flyDur,
+          onDone: opts?.onDone,
+        }
+        if (opts?.reportLabel !== false) {
+          setFocusLabel(`Nr. ${String(cow.kuh.nr).padStart(2, '0')} · ${cow.kuh.name}`)
+        }
+      }
+
+      function flyToCow(nr: number) {
+        const idx = cows.findIndex((c) => c.kuh.nr === nr)
+        if (idx >= 0) flyToCowIndex(idx)
+      }
+
+      function findClosestCowIndex(): number {
+        let bestI = 0
+        let bestDist = Infinity
+        for (let i = 0; i < cows.length; i++) {
+          const dx = cows[i].group.position.x - camera.position.x
+          const d = Math.abs(dx)
+          if (d < bestDist) {
+            bestDist = d
+            bestI = i
+          }
+        }
+        return bestI
+      }
+
+      function step(dir: number) {
+        let idx: number
+        if (tourActive) {
+          tourActive = false
+          setWalking(false)
+        }
+        if (camAnim) {
+          idx = cows.findIndex((c) => Math.abs(c.group.position.x - camAnim!.toP.x) < 0.5)
+          if (idx < 0) idx = findClosestCowIndex()
+        } else {
+          idx = findClosestCowIndex()
+        }
+        const next = (idx + dir + cows.length) % cows.length
+        flyToCowIndex(next)
+      }
+
+      function toggleTour() {
+        if (tourActive) {
+          tourActive = false
+          setWalking(false)
+          return
+        }
+        tourActive = true
+        setWalking(true)
+        tourIndex = findClosestCowIndex()
+        const startNext = () => {
+          if (!tourActive) return
+          flyToCowIndex(tourIndex, {
+            onDone: () => {
+              if (!tourActive) return
+              tourPauseUntil = clock.getElapsedTime() + tourPauseDur
+            },
+          })
+        }
+        startNext()
+      }
+
+      flyToCowRef.current = flyToCow
+      stepRef.current = step
+      tourToggleRef.current = toggleTour
 
       // --- Auswahl-Highlight ---
       let selectedEntry: CowEntry | null = null
@@ -485,6 +596,13 @@ export default function Stall3DPage() {
           setHintVisible(false)
           setHover(null)
           renderer.domElement.style.cursor = 'pointer'
+          // Sanft zur Kuh fliegen (Tour wird dabei abgebrochen)
+          if (tourActive) {
+            tourActive = false
+            setWalking(false)
+          }
+          const idx = cows.findIndex((c) => c.kuh.nr === entry.kuh.nr)
+          if (idx >= 0) flyToCowIndex(idx)
         } else {
           renderer.domElement.style.cursor = 'grab'
         }
@@ -536,12 +654,32 @@ export default function Stall3DPage() {
 
       // --- Loop ---
       let raf = 0
-      const clock = new THREE.Clock()
       const animate = () => {
         raf = requestAnimationFrame(animate)
         const t = clock.getElapsedTime()
         for (const c of cows) {
           c.marker.position.y = c.markerBaseY + Math.sin(t * 2 + c.kuh.nr) * 0.05
+        }
+        // Kamera-Animation (Fly-To)
+        if (camAnim) {
+          const raw = Math.min(1, (t - camAnim.t0) / camAnim.dur)
+          const k = easeInOut(raw)
+          camera.position.lerpVectors(camAnim.fromP, camAnim.toP, k)
+          controls.target.lerpVectors(camAnim.fromT, camAnim.toT, k)
+          if (raw >= 1) {
+            const cb = camAnim.onDone
+            camAnim = null
+            cb?.()
+          }
+        }
+        // Auto-Tour: weiter zur nächsten Kuh, wenn Pause vorbei
+        if (tourActive && !camAnim && t >= tourPauseUntil) {
+          tourIndex = (tourIndex + 1) % cows.length
+          flyToCowIndex(tourIndex, {
+            onDone: () => {
+              if (tourActive) tourPauseUntil = clock.getElapsedTime() + tourPauseDur
+            },
+          })
         }
         controls.update()
         renderer.render(scene, camera)
@@ -574,6 +712,30 @@ export default function Stall3DPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kuehe.length])
 
+  // Tastatur: ← → springt, Leertaste startet/stoppt die Tour, Esc setzt zurück
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return
+      if (e.key === 'ArrowRight') {
+        stepRef.current?.(1)
+        e.preventDefault()
+      } else if (e.key === 'ArrowLeft') {
+        stepRef.current?.(-1)
+        e.preventDefault()
+      } else if (e.code === 'Space') {
+        tourToggleRef.current?.()
+        e.preventDefault()
+      } else if (e.key === 'Escape') {
+        resetViewRef.current?.()
+        setSelected(null)
+        e.preventDefault()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   const counts = (['Gesund', 'Trächtig', 'In Behandlung', 'Trockengestellt'] as KuhStatus[]).map((s) => ({
     s,
     n: kuehe.filter((k) => k.status === s).length,
@@ -588,15 +750,46 @@ export default function Stall3DPage() {
             3D-Stall
           </h1>
           <p className="text-stone-500 mt-0.5 text-sm">
-            Interaktive 3D-Vorschau · Maus zum Drehen &amp; Zoomen · Klick auf eine Kuh für Details
+            Im Gang entlanglaufen · Klick auf eine Kuh für Details · ← / → zum Springen · Leertaste startet Rundgang
           </p>
         </div>
-        <button
-          onClick={() => resetViewRef.current?.()}
-          className="flex items-center gap-2 bg-white border border-stone-200 rounded-lg px-3 py-2 text-sm text-stone-600 hover:bg-stone-50"
-        >
-          <RotateCcw className="w-4 h-4" /> Ansicht zurücksetzen
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => stepRef.current?.(-1)}
+            aria-label="Vorherige Kuh"
+            title="Vorherige Kuh (←)"
+            className="flex items-center justify-center w-10 h-10 bg-white border border-stone-200 rounded-lg text-stone-600 hover:bg-stone-50 hover:border-green-700/40"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => tourToggleRef.current?.()}
+            className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-sm ${
+              walking
+                ? 'bg-red-600 text-white border border-red-700 hover:bg-red-700'
+                : 'bg-green-700 text-white border border-green-800 hover:bg-green-800'
+            }`}
+            title="Auto-Rundgang (Leertaste)"
+          >
+            {walking ? <Square className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+            {walking ? 'Stopp' : 'Rundgang'}
+          </button>
+          <button
+            onClick={() => stepRef.current?.(1)}
+            aria-label="Nächste Kuh"
+            title="Nächste Kuh (→)"
+            className="flex items-center justify-center w-10 h-10 bg-white border border-stone-200 rounded-lg text-stone-600 hover:bg-stone-50 hover:border-green-700/40"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => resetViewRef.current?.()}
+            className="flex items-center gap-2 bg-white border border-stone-200 rounded-lg px-3 py-2 text-sm text-stone-600 hover:bg-stone-50"
+            title="Außenansicht (Esc)"
+          >
+            <RotateCcw className="w-4 h-4" /> Überblick
+          </button>
+        </div>
       </div>
 
       {/* Legende */}
@@ -614,9 +807,26 @@ export default function Stall3DPage() {
       <div className="relative rounded-2xl overflow-hidden border border-stone-300 bg-[#e8e4dc] shadow-inner">
         <div ref={mountRef} className="w-full h-[72vh] min-h-[460px]" />
 
-        {hintVisible && (
-          <div className="absolute bottom-5 left-1/2 -translate-x-1/2 bg-black/65 backdrop-blur text-white text-xs sm:text-sm px-5 py-2.5 rounded-full border border-white/15 pointer-events-none">
-            🐄 Gang entlanglaufen: Rechtsklick/Shift+Drag &nbsp;|&nbsp; 🔄 Drehen: Linksklick &nbsp;|&nbsp; 👆 Kuh anklicken
+        {hintVisible && !walking && !focusLabel && (
+          <div className="absolute bottom-5 left-1/2 -translate-x-1/2 bg-black/70 backdrop-blur text-white text-xs sm:text-sm px-5 py-2.5 rounded-full border border-white/15 pointer-events-none flex items-center gap-2">
+            <Footprints className="w-4 h-4 text-green-300" />
+            <span>Rundgang starten · ← → springen · Klick → fliegen</span>
+          </div>
+        )}
+
+        {walking && (
+          <div className="absolute top-4 left-4 bg-red-600/90 backdrop-blur text-white text-xs sm:text-sm px-3.5 py-2 rounded-full border border-white/20 flex items-center gap-2 shadow-lg pointer-events-none animate-in fade-in duration-300">
+            <span className="relative flex w-2.5 h-2.5">
+              <span className="absolute inline-flex w-full h-full rounded-full bg-white opacity-60 animate-ping" />
+              <span className="relative inline-flex w-2.5 h-2.5 rounded-full bg-white" />
+            </span>
+            Rundgang läuft
+          </div>
+        )}
+
+        {focusLabel && !selected && (
+          <div className="absolute bottom-5 left-1/2 -translate-x-1/2 bg-black/80 backdrop-blur text-white text-sm font-medium px-4 py-2 rounded-full border border-white/20 shadow-lg pointer-events-none">
+            {focusLabel}
           </div>
         )}
 

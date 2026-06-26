@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard,
@@ -9,7 +10,6 @@ import {
   Droplets,
   PartyPopper,
   CheckSquare,
-  Leaf,
   Menu,
   X,
   Users,
@@ -75,14 +75,22 @@ export function Sidebar() {
 
   const NavContent = () => (
     <>
-      <div className="flex items-center gap-3 px-4 py-5 border-b border-sidebar-border">
-        <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-green-400/20">
-          <Leaf className="w-5 h-5 text-green-300" />
-        </div>
-        <div>
-          <p className="text-sm font-semibold text-sidebar-foreground leading-tight">Oberer Stollenhof</p>
-          <p className="text-xs text-green-400/70">Rechberg · Demeter</p>
-        </div>
+      <div className="flex flex-col items-center gap-2 px-4 py-4 border-b border-sidebar-border">
+        <Image
+          src="/assets/logo-stollenhof.png"
+          alt="Oberer Stollenhof"
+          width={160}
+          height={160}
+          className="w-full max-w-[140px]"
+          priority
+        />
+        <Image
+          src="/assets/logo-demeter.png"
+          alt="Demeter"
+          width={80}
+          height={53}
+          className="drop-shadow-sm"
+        />
       </div>
 
       <nav className="flex-1 px-3 py-4 space-y-5 overflow-y-auto">
@@ -114,10 +122,9 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <div className="px-4 py-4 border-t border-sidebar-border">
+      <div className="px-4 py-4 border-t border-sidebar-border flex flex-col gap-1">
         <p className="text-xs text-green-400/50 leading-relaxed">
-          Familie Schabel<br />
-          73529 Rechberg<br />
+          Familie Schabel · 73529 Rechberg<br />
           Baden-Württemberg
         </p>
       </div>
