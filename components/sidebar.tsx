@@ -77,18 +77,18 @@ export function Sidebar() {
     <>
       <div className="flex flex-col items-center gap-2 px-4 py-4 border-b border-sidebar-border">
         <Image
-          src="/assets/logo-stollenhof.svg"
+          src="/assets/logo-stollenhof.png"
           alt="Oberer Stollenhof"
           width={160}
           height={160}
-          className="w-full max-w-[140px] drop-shadow-md"
+          className="w-full max-w-[140px]"
           priority
         />
         <Image
-          src="/assets/logo-demeter.svg"
+          src="/assets/logo-demeter.png"
           alt="Demeter"
           width={80}
-          height={62}
+          height={53}
           className="drop-shadow-sm"
         />
       </div>
