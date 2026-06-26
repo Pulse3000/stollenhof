@@ -60,12 +60,13 @@ export default function Stall3DPage() {
       const height = mount.clientHeight
 
       const scene = new THREE.Scene()
-      scene.background = new THREE.Color('#e8e4dc')
-      scene.fog = new THREE.Fog('#e8e4dc', 50, 110)
+      scene.background = new THREE.Color('#d4c9b4')
+      scene.fog = new THREE.Fog('#d4c9b4', 40, 95)
 
-      const camera = new THREE.PerspectiveCamera(50, width / height, 0.5, 160)
-      const defaultCamPos = new THREE.Vector3(20, 13, 24)
-      const target = new THREE.Vector3(0, 1.1, -1.0)
+      const camera = new THREE.PerspectiveCamera(62, width / height, 0.3, 160)
+      // Startposition: Ende der Kuh-Reihe, Augenhöhe, auf Futtergangebene (z≈−2.5)
+      const defaultCamPos = new THREE.Vector3(startX - 2.5, 1.65, -2.5)
+      const target = new THREE.Vector3(startX + 16, 1.45, -0.5)
       camera.position.copy(defaultCamPos)
       camera.lookAt(target)
 
@@ -81,21 +82,21 @@ export default function Stall3DPage() {
       renderer.domElement.style.cursor = 'grab'
 
       // --- Licht ---
-      scene.add(new THREE.AmbientLight('#ffffff', 1.9))
-      const sun = new THREE.DirectionalLight('#fffef5', 3.2)
+      scene.add(new THREE.AmbientLight('#ffe8c8', 1.2))
+      const sun = new THREE.DirectionalLight('#fffef5', 2.4)
       sun.position.set(25, 30, 10)
       sun.castShadow = true
       sun.shadow.mapSize.set(2048, 2048)
       sun.shadow.camera.near = 0.5
-      sun.shadow.camera.far = 120
-      sun.shadow.camera.left = -60
-      sun.shadow.camera.right = 60
+      sun.shadow.camera.far = 160
+      sun.shadow.camera.left = -70
+      sun.shadow.camera.right = 70
       sun.shadow.camera.top = 30
       sun.shadow.camera.bottom = -10
       sun.shadow.bias = -0.0004
       sun.shadow.normalBias = 0.02
       scene.add(sun)
-      const fill = new THREE.DirectionalLight('#d4e0ff', 1.4)
+      const fill = new THREE.DirectionalLight('#d4e0ff', 0.9)
       fill.position.set(-10, 8, -5)
       scene.add(fill)
 
@@ -174,6 +175,75 @@ export default function Stall3DPage() {
         const bar2 = new THREE.Mesh(barGeo, barMat)
         bar2.position.set(x, tableHeight + 0.52, gateZ)
         scene.add(bar2)
+      }
+
+      // --- Stallgebäude: Wände, Decke, Binder, Lampen ---
+      const barnW = floorW + 2
+      const barnD = 28
+      const wallH = 4.8
+      const wallMat = track(new THREE.MeshStandardMaterial({ color: '#bfb49e', roughness: 0.88, metalness: 0.0, side: THREE.FrontSide }))
+
+      // Rückwand (Futtergangseite, z negativ)
+      const wallBackGeo = track(new THREE.BoxGeometry(barnW, wallH, 0.25))
+      const wBack = new THREE.Mesh(wallBackGeo, wallMat)
+      wBack.position.set(0, wallH / 2, -barnD / 2)
+      wBack.receiveShadow = true
+      scene.add(wBack)
+      // Vorderwand (Liegeboxenseite, z positiv)
+      const wFront = new THREE.Mesh(wallBackGeo, wallMat)
+      wFront.position.set(0, wallH / 2, barnD / 2)
+      wFront.receiveShadow = true
+      scene.add(wFront)
+      // Stirnwände (links/rechts)
+      const wallSideGeo = track(new THREE.BoxGeometry(0.25, wallH, barnD))
+      const wLeft = new THREE.Mesh(wallSideGeo, wallMat)
+      wLeft.position.set(-barnW / 2, wallH / 2, 0)
+      wLeft.receiveShadow = true
+      scene.add(wLeft)
+      const wRight = new THREE.Mesh(wallSideGeo, wallMat)
+      wRight.position.set(barnW / 2, wallH / 2, 0)
+      wRight.receiveShadow = true
+      scene.add(wRight)
+
+      // Decke
+      const ceilMat = track(new THREE.MeshStandardMaterial({ color: '#d8cfc0', roughness: 0.92, side: THREE.BackSide }))
+      const ceil = new THREE.Mesh(
+        track(new THREE.PlaneGeometry(barnW, barnD)),
+        ceilMat,
+      )
+      ceil.rotation.x = Math.PI / 2
+      ceil.position.set(0, wallH, 0)
+      scene.add(ceil)
+
+      // Deckenbinder (Holzbalken quer)
+      const binderMat = track(new THREE.MeshStandardMaterial({ color: '#7a5c3a', roughness: 0.82 }))
+      const binderGeo = track(new THREE.BoxGeometry(barnW, 0.18, 0.28))
+      for (let bz = -10; bz <= 12; bz += 5.5) {
+        const binder = new THREE.Mesh(binderGeo, binderMat)
+        binder.position.set(0, wallH - 0.09, bz)
+        binder.castShadow = true
+        scene.add(binder)
+      }
+
+      // Deckenlampen (alle 5.5 Einheiten, je ein leuchtender Zylinder)
+      const lampBodyGeo = track(new THREE.CylinderGeometry(0.22, 0.26, 0.18, 10))
+      const lampBodyMat = track(new THREE.MeshStandardMaterial({ color: '#e8e0d0', roughness: 0.5 }))
+      const lampGlowMat = track(new THREE.MeshStandardMaterial({ color: '#fffbe0', emissive: '#fffbe0', emissiveIntensity: 1.2, roughness: 1 }))
+      const lampGlowGeo = track(new THREE.CircleGeometry(0.2, 10))
+      for (let bz = -10; bz <= 12; bz += 5.5) {
+        // Lampen-Körper
+        const lb = new THREE.Mesh(lampBodyGeo, lampBodyMat)
+        lb.position.set(0, wallH - 0.28, bz)
+        scene.add(lb)
+        // Leuchtfläche (nach unten zeigend)
+        const lg = new THREE.Mesh(lampGlowGeo, lampGlowMat)
+        lg.rotation.x = Math.PI / 2
+        lg.position.set(0, wallH - 0.37, bz)
+        scene.add(lg)
+        // PointLight darunter für Beleuchtung
+        const pl = new THREE.PointLight('#fff5d8', 2.2, 22, 1.6)
+        pl.position.set(0, wallH - 0.5, bz)
+        scene.add(pl)
       }
 
       // --- Platzhalter-Textur (per Canvas, kein Binärasset nötig) ---
@@ -346,10 +416,12 @@ export default function Stall3DPage() {
       controls.target.copy(target)
       controls.enableDamping = true
       controls.dampingFactor = 0.12
-      controls.minDistance = 4
-      controls.maxDistance = 70
-      controls.maxPolarAngle = Math.PI / 2.2
-      controls.minPolarAngle = 0.15
+      controls.minDistance = 0.8
+      controls.maxDistance = 55
+      controls.maxPolarAngle = Math.PI / 1.85   // flacherer Blickwinkel möglich
+      controls.minPolarAngle = 0.08
+      controls.panSpeed = 1.4
+      controls.zoomSpeed = 1.2
       controls.update()
 
       resetViewRef.current = () => {
@@ -544,7 +616,7 @@ export default function Stall3DPage() {
 
         {hintVisible && (
           <div className="absolute bottom-5 left-1/2 -translate-x-1/2 bg-black/65 backdrop-blur text-white text-xs sm:text-sm px-5 py-2.5 rounded-full border border-white/15 pointer-events-none">
-            🖱️ Drehen &amp; Zoomen &nbsp;|&nbsp; 👆 Klick auf eine Kuh für Infos
+            🐄 Gang entlanglaufen: Rechtsklick/Shift+Drag &nbsp;|&nbsp; 🔄 Drehen: Linksklick &nbsp;|&nbsp; 👆 Kuh anklicken
           </div>
         )}
 
