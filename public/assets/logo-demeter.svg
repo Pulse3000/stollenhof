@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 36" fill="none">
+  <!-- Orange background rectangle -->
+  <rect width="80" height="36" rx="3" fill="#E8630A"/>
+
+  <!-- Green wave at bottom -->
+  <path d="M0 28 Q10 22 20 26 Q30 30 40 24 Q50 18 60 23 Q70 28 80 22 L80 36 L0 36 Z" fill="#4a8c2a"/>
+
+  <!-- demeter text in white, handwritten style -->
+  <text x="40" y="21" text-anchor="middle" font-family="'Palatino Linotype', Palatino, Georgia, serif" font-size="14" font-weight="bold" fill="white" letter-spacing="0.5" font-style="italic">demeter</text>
+</svg>
