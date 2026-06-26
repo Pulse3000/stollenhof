@@ -79,16 +79,16 @@ export function Sidebar() {
         <Image
           src="/assets/logo-stollenhof.svg"
           alt="Oberer Stollenhof"
-          width={180}
-          height={98}
-          className="w-full max-w-[160px] drop-shadow-md"
+          width={160}
+          height={160}
+          className="w-full max-w-[140px] drop-shadow-md"
           priority
         />
         <Image
           src="/assets/logo-demeter.svg"
           alt="Demeter"
-          width={72}
-          height={32}
+          width={80}
+          height={62}
           className="drop-shadow-sm"
         />
       </div>

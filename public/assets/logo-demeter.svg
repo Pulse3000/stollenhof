@@ -1,10 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 36" fill="none">
-  <!-- Orange background rectangle -->
-  <rect width="80" height="36" rx="3" fill="#E8630A"/>
-
-  <!-- Green wave at bottom -->
-  <path d="M0 28 Q10 22 20 26 Q30 30 40 24 Q50 18 60 23 Q70 28 80 22 L80 36 L0 36 Z" fill="#4a8c2a"/>
-
-  <!-- demeter text in white, handwritten style -->
-  <text x="40" y="21" text-anchor="middle" font-family="'Palatino Linotype', Palatino, Georgia, serif" font-size="14" font-weight="bold" fill="white" letter-spacing="0.5" font-style="italic">demeter</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 730" fill="none">
+  <!-- Orange main shape (slightly trapezoidal) -->
+  <path d="M0 0 L960 0 L960 620 L0 680 Z" fill="#F47920"/>
+  <!-- Green wave banner at bottom -->
+  <path d="M0 580 Q120 520 240 560 Q360 600 480 540 Q600 480 720 520 Q840 560 960 500 L960 730 L0 730 Z" fill="#2E8B57"/>
+  <!-- demeter text - white, bold, rounded/playful -->
+  <text x="480" y="430" text-anchor="middle"
+    font-family="'Arial Rounded MT Bold', 'Nunito', 'Varela Round', Arial, sans-serif"
+    font-size="260" font-weight="900" fill="white" letter-spacing="-5">demeter</text>
 </svg>
