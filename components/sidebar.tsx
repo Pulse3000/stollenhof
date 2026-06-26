@@ -22,6 +22,9 @@ import {
   Trees,
   Eye,
   Cpu,
+  MapPin,
+  ClipboardList,
+  Gamepad2,
 } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
@@ -37,6 +40,10 @@ const navGroups: { title: string; items: NavItem[] }[] = [
       { href: '/stallwache', label: 'Stallwache', icon: Eye },
       { href: '/stallsimulator', label: 'KI-Simulator', icon: Cpu },
       { href: '/tiere', label: 'Tiere', icon: Beef },
+      { href: '/geburten', label: 'Geburtenkalender', icon: CalendarDays },
+      { href: '/stall3d', label: '3D-Stall', icon: MapPin },
+      { href: '/neuer-eintrag', label: 'Neuer Eintrag', icon: ClipboardList },
+      { href: '/stallgame', label: 'Kuh-Memory', icon: Gamepad2 },
       { href: '/milch', label: 'Milchdaten', icon: Droplets },
       { href: '/weide', label: 'Weiden', icon: Trees },
       { href: '/futter', label: 'Futter', icon: Package },
